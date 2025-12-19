@@ -12,4 +12,6 @@ urlpatterns = [
 
     # Apps
     path("api/accounts/", include("accounts.urls")),
+    path("api/providers/", include("providers.urls")),
+    path("api/specialists/", include("specialists.urls")),
 ]
