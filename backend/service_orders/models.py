@@ -12,8 +12,8 @@ class OrderStatus(models.TextChoices):
 class ServiceOrder(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    request = models.ForeignKey("requests.ServiceRequest", null=True, blank=True, on_delete=models.SET_NULL)
-    winning_offer = models.ForeignKey("requests.ServiceOffer", null=True, blank=True, on_delete=models.SET_NULL)
+    request = models.ForeignKey("service_requests.ServiceRequest", null=True, blank=True, on_delete=models.SET_NULL)
+    winning_offer = models.ForeignKey("service_requests.ServiceOffer", null=True, blank=True, on_delete=models.SET_NULL)
 
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="service_orders")
     specialist = models.ForeignKey("specialists.Specialist", null=True, blank=True, on_delete=models.SET_NULL)
