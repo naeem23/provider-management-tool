@@ -15,7 +15,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
     """
     queryset = Specialist.objects.all()
     serializer_class = SpecialistSerializer
-    permission_classes = [IsAuthenticated, IsSameProviderOrStaff]
+    permission_classes = [IsAuthenticated,]
 
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update"]:

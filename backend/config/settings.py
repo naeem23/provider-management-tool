@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "providers",
     "service_requests",
     "specialists",
+    "service_orders",
 ]
 
 MIDDLEWARE = [
