@@ -1,9 +1,11 @@
+import sys
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
 from django.forms.models import model_to_dict
 
 from .models import AuditLog, AuditAction
 from .middleware import get_current_request
+from .utils import serialize_for_json
 
 
 def _get_actor_data():
@@ -22,12 +24,15 @@ def _get_actor_data():
 
 @receiver(pre_save)
 def log_before_update(sender, instance, **kwargs):
+    if is_running_migrations():
+        return
+
     if not instance.pk:
         return
 
     try:
         old = sender.objects.get(pk=instance.pk)
-        instance._audit_before = model_to_dict(old)
+        instance._audit_before = serialize_for_json(model_to_dict(old))
     except Exception:
         instance._audit_before = None
 
@@ -35,7 +40,7 @@ def log_before_update(sender, instance, **kwargs):
 @receiver(post_save)
 def log_create_update(sender, instance, created, **kwargs):
     # Avoid logging AuditLog itself
-    if sender == AuditLog:
+    if sender == AuditLog or is_running_migrations():
         return
 
     user, role, ip, endpoint = _get_actor_data()
@@ -49,7 +54,7 @@ def log_create_update(sender, instance, created, **kwargs):
         entity_type=sender.__name__,
         entity_id=str(instance.pk),
         before=getattr(instance, "_audit_before", None),
-        after=model_to_dict(instance),
+        after=serialize_for_json(model_to_dict(instance)),
         ip_address=ip,
         endpoint=endpoint,
     )
@@ -57,7 +62,7 @@ def log_create_update(sender, instance, created, **kwargs):
 
 @receiver(post_delete)
 def log_delete(sender, instance, **kwargs):
-    if sender == AuditLog:
+    if sender == AuditLog or is_running_migrations():
         return
 
     user, role, ip, endpoint = _get_actor_data()
@@ -68,8 +73,13 @@ def log_delete(sender, instance, **kwargs):
         action=AuditAction.DELETE,
         entity_type=sender.__name__,
         entity_id=str(instance.pk),
-        before=model_to_dict(instance),
+        before=serialize_for_json(model_to_dict(instance)),
         after=None,
         ip_address=ip,
         endpoint=endpoint,
     )
+
+
+
+def is_running_migrations():
+    return "migrate" in sys.argv or "makemigrations" in sys.argv
