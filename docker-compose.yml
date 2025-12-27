@@ -12,3 +12,42 @@ services:
       - ./backend/.env
     stdin_open: true
     tty: true
+
+  flowable-db:
+    image: postgres:14
+    container_name: flowable-db
+    environment:
+      POSTGRES_DB: flowable
+      POSTGRES_USER: flowable
+      POSTGRES_PASSWORD: flowable
+    volumes:
+      - flowable-db-data:/var/lib/postgresql/data
+
+  flowable-rest:
+    image: flowable/flowable-rest:6.8.0
+    container_name: flowable-rest
+    depends_on:
+      - flowable-db
+    ports:
+      - "8080:8080"
+    environment:
+      FLOWABLE_DATABASE_TYPE: postgres
+      FLOWABLE_DATABASE_HOST: flowable-db
+      FLOWABLE_DATABASE_NAME: flowable
+      FLOWABLE_DATABASE_USERNAME: flowable
+      FLOWABLE_DATABASE_PASSWORD: flowable
+      FLOWABLE_DATABASE_SCHEMA_UPDATE: true
+
+  flowable-ui:
+    image: flowable/flowable-ui:6.8.0
+    container_name: flowable-ui
+    depends_on:
+      - flowable-rest
+    ports:
+      - "8090:8080"
+    environment:
+      FLOWABLE_REST_APP_HOST: flowable-rest
+      FLOWABLE_REST_APP_PORT: 8080
+
+volumes:
+  flowable-db-data:
