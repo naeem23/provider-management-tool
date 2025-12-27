@@ -36,7 +36,7 @@ INSTALLED_APPS = [
 
     # Local apps
     "accounts",
-    "audit",
+    "audit_log",
     "contracts",
     "notifications",
     "providers",
@@ -46,6 +46,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "audit_log.middleware.AuditRequestMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

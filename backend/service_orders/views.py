@@ -16,6 +16,8 @@ from .permissions import (
     CanRequestSubstitution,
     CanRequestExtension,
 )
+from audit_log.utils import log_audit_event
+from audit_log.models import AuditAction
 
 
 class ServiceOrderViewSet(
@@ -62,6 +64,10 @@ class ServiceOrderViewSet(
 
         order.status = OrderStatus.IN_PROGRESS
         order.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, order)
+
         return Response({"status": "IN_PROGRESS"})
 
     @action(detail=True, methods=["post"])
@@ -76,6 +82,10 @@ class ServiceOrderViewSet(
 
         order.status = OrderStatus.COMPLETED
         order.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, order)
+
         return Response({"status": "COMPLETED"})
 
 

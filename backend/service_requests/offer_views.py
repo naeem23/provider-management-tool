@@ -17,6 +17,8 @@ from .permissions import (
     CanViewOffer,
     CanDecideOffer,
 )
+from audit_log.utils import log_audit_event
+from audit_log.models import AuditAction
 
 
 class ServiceOfferViewSet(
@@ -82,6 +84,9 @@ class ServiceOfferViewSet(
 
         offer.status = OfferStatus.SUBMITTED
         offer.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, offer)
 
         return Response({"status": "SUBMITTED"})
 
@@ -101,6 +106,9 @@ class ServiceOfferViewSet(
 
         offer.status = OfferStatus.WITHDRAWN
         offer.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, offer)
 
         return Response({"status": "WITHDRAWN"})
 
@@ -149,6 +157,9 @@ class ServiceOfferViewSet(
                 man_days=service_request.expected_man_days,
                 status="CREATED",
             )
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, offer)
 
         return Response(
             {"detail": "Offer accepted and service order created."},
@@ -168,6 +179,9 @@ class ServiceOfferViewSet(
 
         offer.status = OfferStatus.REJECTED
         offer.save(update_fields=["status"])
+
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, offer)
 
         return Response(
             {"detail": "Offer rejected."},

@@ -11,6 +11,8 @@ from .serializers import (
     ServiceRequestUpdateSerializer,
 )
 from .permissions import CanManageServiceRequest, CanEditServiceRequest
+from audit_log.utils import log_audit_event
+from audit_log.models import AuditAction
 
 
 class ServiceRequestViewSet(
@@ -70,6 +72,9 @@ class ServiceRequestViewSet(
         service_request.status = RequestStatus.OPEN
         service_request.save(update_fields=["status"])
 
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, service_request)
+
         return Response({"status": "OPEN"})
 
     @action(detail=True, methods=["post"])
@@ -87,5 +92,8 @@ class ServiceRequestViewSet(
 
         service_request.status = RequestStatus.CLOSED
         service_request.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, service_request)
 
         return Response({"status": "CLOSED"})

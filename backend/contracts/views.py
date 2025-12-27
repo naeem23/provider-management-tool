@@ -11,6 +11,8 @@ from .serializers import (
     PricingRuleSerializer,
 )
 from .permissions import CanManageContracts, CanApproveContract
+from audit_log.utils import log_audit_event
+from audit_log.models import AuditAction
 
 
 class ContractViewSet(
@@ -55,6 +57,10 @@ class ContractViewSet(
 
         contract.status = ContractStatus.IN_NEGOTIATION
         contract.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, contract)
+
         return Response({"status": "IN_NEGOTIATION"})
 
     @action(detail=True, methods=["post"])
@@ -69,6 +75,10 @@ class ContractViewSet(
 
         contract.status = ContractStatus.ACTIVE
         contract.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, contract)
+
         return Response({"status": "ACTIVE"})
 
 
