@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions
+  xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:flowable="http://flowable.org/bpmn"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+  typeLanguage="http://www.w3.org/2001/XMLSchema"
+  expressionLanguage="http://www.w3.org/1999/XPath"
+  targetNamespace="http://provider.management/bpmn">
+
+  <process
+    id="serviceRequestBidding"
+    name="Service Request Bidding"
+    isExecutable="true">
+
+    <!-- ===================== -->
+    <!-- Start Event -->
+    <!-- ===================== -->
+    <startEvent id="startEvent" name="Start Bidding">
+      <outgoing>flow_start_to_submit</outgoing>
+    </startEvent>
+
+    <!-- ===================== -->
+    <!-- Supplier submits offer -->
+    <!-- ===================== -->
+    <userTask
+      id="submitOfferTask"
+      name="Submit Offer"
+      flowable:candidateGroups="supplier_rep">
+      <incoming>flow_start_to_submit</incoming>
+      <outgoing>flow_submit_to_create_offer</outgoing>
+    </userTask>
+
+    <!-- ===================== -->
+    <!-- Create Offer in Django -->
+    <!-- ===================== -->
+    <serviceTask
+      id="createOfferTask"
+      name="Create Offer (Django)"
+      flowable:type="http">
+      
+      <extensionElements>
+        <flowable:field name="requestMethod">
+          <flowable:string><![CDATA[POST]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="requestUrl">
+          <flowable:expression><![CDATA[${baseApiUrl}/api/requests/service-offers/]]></flowable:expression>
+        </flowable:field>
+        <flowable:field name="requestHeaders">
+          <flowable:expression><![CDATA[Content-Type: application/json
+X-FLOWABLE-API-KEY: super-secret-flowable-key]]></flowable:expression>
+        </flowable:field>
+        <flowable:field name="requestBody">
+          <flowable:expression><![CDATA[{
+  "request": "${serviceRequestId}",
+  "proposed_specialist": "${specialistId}",
+  "daily_rate": ${dailyRate},
+  "travel_cost": ${travelCost},
+  "total_cost": ${totalCost},
+  "notes": "${notes}"
+}]]></flowable:expression>
+        </flowable:field>
+        <!-- FIXED: Changed from responseVariableName to resultVariablePrefix -->
+        <flowable:field name="resultVariablePrefix">
+          <flowable:string><![CDATA[offer]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="saveResponseVariableAsJson">
+          <flowable:string><![CDATA[true]]></flowable:string>
+        </flowable:field>
+      </extensionElements>
+      
+      <incoming>flow_submit_to_create_offer</incoming>
+      <outgoing>flow_create_to_parse</outgoing>
+    </serviceTask>
+
+    <!-- ===================== -->
+    <!-- Parse Offer Response -->
+    <!-- ===================== -->
+    <scriptTask id="parseOfferResponse" name="Parse Offer Response" scriptFormat="javascript">
+      <incoming>flow_create_to_parse</incoming>
+      <outgoing>flow_parse_to_submit</outgoing>
+      <script>
+        <![CDATA[
+          // Debug: Print all variables
+          var allVars = execution.getVariables();
+          java.lang.System.out.println("========== ALL VARIABLES ==========");
+          for (var key in allVars.keySet()) {
+            java.lang.System.out.println(key + " = " + allVars.get(key));
+          }
+          
+          // Get the response body
+          var responseBodyStr = execution.getVariable("offerResponseBody");
+          java.lang.System.out.println("Raw offerResponseBody: " + responseBodyStr);
+          
+          if (responseBodyStr == null || responseBodyStr == "") {
+            throw new Error("offerResponseBody is null or empty!");
+          }
+          
+          // Parse the JSON response
+          var responseBody = JSON.parse(responseBodyStr);
+          java.lang.System.out.println("Parsed offer ID: " + responseBody.id);
+          
+          // Set offerId variable
+          execution.setVariable("offerId", responseBody.id);
+          
+          java.lang.System.out.println("offerId successfully set to: " + responseBody.id);
+          java.lang.System.out.println("baseApiUrl: " + execution.getVariable("baseApiUrl"));
+        ]]>
+      </script>
+    </scriptTask>
+
+    <!-- ===================== -->
+    <!-- Submit Offer -->
+    <!-- ===================== -->
+    <serviceTask
+      id="submitOfferApiTask"
+      name="Submit Offer (Django)"
+      flowable:type="http">
+      
+      <extensionElements>
+        <flowable:field name="requestMethod">
+          <flowable:string><![CDATA[POST]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="requestUrl">
+          <!-- FIXED: Using baseApiUrl variable from process start -->
+          <flowable:expression><![CDATA[${baseApiUrl}/api/requests/service-offers/${offerId}/submit/]]></flowable:expression>
+        </flowable:field>
+        <flowable:field name="requestHeaders">
+          <flowable:expression><![CDATA[Content-Type: application/json
+X-FLOWABLE-API-KEY: super-secret-flowable-key]]></flowable:expression>
+        </flowable:field>
+      </extensionElements>
+      
+      <!-- FIXED: Changed incoming from flow_create_to_submit_offer to flow_parse_to_submit -->
+      <incoming>flow_parse_to_submit</incoming>
+      <outgoing>flow_submit_offer_to_close</outgoing>
+    </serviceTask>
+
+    <!-- ===================== -->
+    <!-- Internal PM selects winner -->
+    <!-- ===================== -->
+    <userTask
+      id="selectWinnerTask"
+      name="Select Winning Offer"
+      flowable:candidateGroups="internal_pm">
+      <incoming>flow_submit_offer_to_close</incoming>
+      <outgoing>flow_select_to_accept</outgoing>
+    </userTask>
+
+    <!-- ===================== -->
+    <!-- Accept Offer -->
+    <!-- ===================== -->
+    <serviceTask
+      id="acceptOfferTask"
+      name="Accept Offer (Django)"
+      flowable:type="http">
+      
+      <extensionElements>
+        <flowable:field name="requestMethod">
+          <flowable:string><![CDATA[POST]]></flowable:string>
+        </flowable:field>
+        <flowable:field name="requestUrl">
+          <!-- FIXED: Changed from offerResponseBody to selectedOfferId -->
+          <flowable:expression><![CDATA[${baseApiUrl}/api/requests/service-offers/${selectedOfferId}/accept/]]></flowable:expression>
+        </flowable:field>
+        <flowable:field name="requestHeaders">
+          <flowable:expression><![CDATA[Content-Type: application/json
+X-FLOWABLE-API-KEY: super-secret-flowable-key]]></flowable:expression>
+        </flowable:field>
+      </extensionElements>
+      
+      <incoming>flow_select_to_accept</incoming>
+      <outgoing>flow_accept_to_end</outgoing>
+    </serviceTask>
+
+    <!-- ===================== -->
+    <!-- End Event -->
+    <!-- ===================== -->
+    <endEvent id="endEvent" name="Order Created">
+      <incoming>flow_accept_to_end</incoming>
+    </endEvent>
+
+    <!-- ===================== -->
+    <!-- Sequence Flows -->
+    <!-- ===================== -->
+    <sequenceFlow id="flow_start_to_submit" sourceRef="startEvent" targetRef="submitOfferTask"/>
+    <sequenceFlow id="flow_submit_to_create_offer" sourceRef="submitOfferTask" targetRef="createOfferTask"/>
+    <!-- FIXED: Changed to go through parseOfferResponse script task -->
+    <sequenceFlow id="flow_create_to_parse" sourceRef="createOfferTask" targetRef="parseOfferResponse"/>
+    <sequenceFlow id="flow_parse_to_submit" sourceRef="parseOfferResponse" targetRef="submitOfferApiTask"/>
+    <sequenceFlow id="flow_submit_offer_to_close" sourceRef="submitOfferApiTask" targetRef="selectWinnerTask"/>
+    <sequenceFlow id="flow_select_to_accept" sourceRef="selectWinnerTask" targetRef="acceptOfferTask"/>
+    <sequenceFlow id="flow_accept_to_end" sourceRef="acceptOfferTask" targetRef="endEvent"/>
+
+  </process>
+</definitions>

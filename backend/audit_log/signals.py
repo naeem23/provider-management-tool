@@ -18,7 +18,7 @@ def _get_actor_data():
         user,
         getattr(user, "role", ""),
         request.META.get("REMOTE_ADDR"),
-        request.path,
+        request.path if request else "",
     )
 
 
@@ -32,7 +32,12 @@ def log_before_update(sender, instance, **kwargs):
 
     try:
         old = sender.objects.get(pk=instance.pk)
-        instance._audit_before = serialize_for_json(model_to_dict(old))
+        instance._audit_before = serialize_for_json(
+            model_to_dict(
+                old,
+                exclude=["groups", "user_permissions"]
+            )
+        )
     except Exception:
         instance._audit_before = None
 
@@ -54,7 +59,12 @@ def log_create_update(sender, instance, created, **kwargs):
         entity_type=sender.__name__,
         entity_id=str(instance.pk),
         before=getattr(instance, "_audit_before", None),
-        after=serialize_for_json(model_to_dict(instance)),
+        after=serialize_for_json(
+            model_to_dict(
+                instance,
+                exclude=["groups", "user_permissions"]
+            )
+        ),
         ip_address=ip,
         endpoint=endpoint,
     )
@@ -73,7 +83,13 @@ def log_delete(sender, instance, **kwargs):
         action=AuditAction.DELETE,
         entity_type=sender.__name__,
         entity_id=str(instance.pk),
-        before=serialize_for_json(model_to_dict(instance)),
+        # before=serialize_for_json(model_to_dict(instance)),
+        before=serialize_for_json(
+            model_to_dict(
+                instance,
+                exclude=["groups", "user_permissions"]
+            )
+        ),
         after=None,
         ip_address=ip,
         endpoint=endpoint,

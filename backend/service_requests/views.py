@@ -13,6 +13,7 @@ from .serializers import (
 from .permissions import CanManageServiceRequest, CanEditServiceRequest
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
+from integrations.flowable_client import start_service_request_bidding_process
 
 
 class ServiceRequestViewSet(
@@ -74,6 +75,11 @@ class ServiceRequestViewSet(
 
         # AUDIT LOG
         log_audit_event(AuditAction.STATUS_CHANGE, service_request)
+
+        # Start Flowable BPMN
+        start_service_request_bidding_process(
+            service_request_id=service_request.id
+        )   
 
         return Response({"status": "OPEN"})
 

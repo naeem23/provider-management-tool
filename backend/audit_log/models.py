@@ -29,7 +29,7 @@ class AuditLog(models.Model):
     after       = models.JSONField(null=True, blank=True)
 
     ip_address = models.GenericIPAddressField(null=True, blank=True)
-    endpoint = models.CharField(max_length=255, blank=True)
+    endpoint = models.CharField(max_length=255, blank=True, null=True)
 
     created_at  = models.DateTimeField(auto_now_add=True)
 

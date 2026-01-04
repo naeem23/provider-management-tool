@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ServiceOffer, OfferStatus, ServiceRequest
+from .models import RequestStatus, ServiceOffer, OfferStatus, ServiceRequest
 
 
 class ServiceOfferReadSerializer(serializers.ModelSerializer):
@@ -56,7 +56,7 @@ class ServiceOfferCreateSerializer(serializers.ModelSerializer):
     def validate(self, data):
         request = data["request"]
 
-        if request.status != request.status.OPEN:
+        if request.status != RequestStatus.OPEN:
             raise serializers.ValidationError("Offers can only be created for OPEN requests.")
 
         return data

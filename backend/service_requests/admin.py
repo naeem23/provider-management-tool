@@ -1,3 +1,18 @@
 from django.contrib import admin
+from .models import ServiceRequest, ServiceOffer
 
-# Register your models here.
+
+@admin.register(ServiceRequest)
+class ServiceRequestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'status', 'domain', 'role_name']
+    list_filter = ['status', 'experience_level', 'created_at']
+    search_fields = ['external_request_id', 'domain', 'role_name', 'technology']
+    ordering = ['-created_at']
+
+
+@admin.register(ServiceOffer)
+class ServiceOfferAdmin(admin.ModelAdmin):
+    list_display = ['id', 'status', 'created_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['id', 'request__id', 'provider__name']
+    ordering = ['-created_at']

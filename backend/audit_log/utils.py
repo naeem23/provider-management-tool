@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 from .models import AuditLog, AuditAction
 from .middleware import get_current_request
@@ -31,6 +32,9 @@ def serialize_for_json(data):
 
     if isinstance(data, list):
         return [serialize_for_json(v) for v in data]
+
+    if isinstance(data, UUID):
+        return str(data)
 
     if isinstance(data, (datetime, date)):
         return data.isoformat()

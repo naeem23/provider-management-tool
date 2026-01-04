@@ -1,4 +1,4 @@
-from accounts.models import UserRole
+from accounts.models import User, UserRole
 from notifications.utils import create_notification
 from audit_log.models import AuditAction
 
@@ -38,48 +38,46 @@ def handle_audit_event(audit_log):
 
 
 def _notify_service_request_status_change(audit_log):
-    from requests.models import ServiceRequest
+    from service_requests.models import ServiceRequest
 
     request = ServiceRequest.objects.filter(pk=audit_log.entity_id).first()
     if not request:
         return
 
-    # Notify Internal PMs
-    users = request.provider.users.filter(
-        role=UserRole.INTERNAL_PM
-    )
+    # Notify Supplier Representative
+    users = User.objects.filter(role=UserRole.SUPPLIER_REP)
 
     for user in users:
         create_notification(
             user=user,
-            title="Service Request Status Updated",
-            message=f"Service request {request.id} is now {request.status}.",
+            title="New Service Request",
+            message=f"Service request {request.id} is now {request.status} for bidding.",
             entity=request,
         )
 
 
 
 def _notify_service_offer_status_change(audit_log):
-    from requests.models import ServiceOffer, OfferStatus
+    from service_requests.models import ServiceOffer, OfferStatus
 
     offer = ServiceOffer.objects.filter(pk=audit_log.entity_id).first()
     if not offer:
         return
 
-    if offer.status == OfferStatus.SUBMITTED:
-        # Notify Internal PM
-        pm_users = offer.provider.users.filter(
-            role=UserRole.INTERNAL_PM
-        )
-        for user in pm_users:
-            create_notification(
-                user=user,
-                title="New Offer Submitted",
-                message="A supplier has submitted an offer.",
-                entity=offer,
-            )
+    # if offer.status == OfferStatus.SUBMITTED:
+    #     # Notify Supplier Representative
+    #     sr_users = offer.provider.users.filter(
+    #         role=UserRole.SUPPLIER_REP
+    #     )
+    #     for user in sr_users:
+    #         create_notification(
+    #             user=user,
+    #             title="New Offer Submitted",
+    #             message="An offer has been submitted.",
+    #             entity=offer,
+    #         )
 
-    if offer.status in [OfferStatus.ACCEPTED, OfferStatus.REJECTED]:
+    if offer.status in [OfferStatus.SUBMITTED, OfferStatus.ACCEPTED, OfferStatus.REJECTED]:
         # Notify Supplier Rep
         if offer.submitted_by:
             create_notification(

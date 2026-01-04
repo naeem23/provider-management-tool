@@ -10,8 +10,8 @@ services:
       - ./backend:/app
     env_file:
       - ./backend/.env
-    stdin_open: true
-    tty: true
+    depends_on:
+      - flowable-rest
 
   flowable-db:
     image: postgres:14
@@ -37,6 +37,7 @@ services:
       FLOWABLE_DATABASE_USERNAME: flowable
       FLOWABLE_DATABASE_PASSWORD: flowable
       FLOWABLE_DATABASE_SCHEMA_UPDATE: true
+      FLOWABLE_DJANGO_BASE_URL: http://django:8000
 
   flowable-ui:
     image: flowable/flowable-ui:6.8.0

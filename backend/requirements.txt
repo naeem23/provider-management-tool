@@ -6,3 +6,4 @@ PyJWT==2.10.1
 python-dotenv==1.0.1
 sqlparse==0.5.4
 drf-nested-routers==0.95.0
+requests==2.32.5

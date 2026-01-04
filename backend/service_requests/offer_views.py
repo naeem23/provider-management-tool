@@ -1,5 +1,6 @@
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
@@ -16,9 +17,12 @@ from .permissions import (
     CanEditDraftOffer,
     CanViewOffer,
     CanDecideOffer,
+    IsAuthenticatedOrFlowable,
 )
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
+from specialists.models import Specialist
+from accounts.models import User, UserRole
 
 
 class ServiceOfferViewSet(
@@ -31,12 +35,12 @@ class ServiceOfferViewSet(
     queryset = ServiceOffer.objects.select_related(
         "request", "provider", "proposed_specialist"
     )
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrFlowable]
 
     def get_queryset(self):
         user = self.request.user
 
-        if user.is_staff or user.is_superuser:
+        if user.is_staff or user.is_superuser or getattr(self.request, "is_flowable", False):
             return self.queryset
 
         # Supplier sees only own provider offers
@@ -54,18 +58,52 @@ class ServiceOfferViewSet(
 
     def get_permissions(self):
         if self.action == "create":
-            return [IsAuthenticated(), IsSupplierRep()]
+            return [IsAuthenticatedOrFlowable(), IsSupplierRep()]
         if self.action in ["update", "partial_update"]:
-            return [IsAuthenticated(), IsSupplierRep(), CanEditDraftOffer()]
+            return [IsAuthenticatedOrFlowable(), IsSupplierRep(), CanEditDraftOffer()]
         if self.action in ["accept", "reject"]:
-            return [IsAuthenticated(), CanDecideOffer()]
+            return [IsAuthenticatedOrFlowable(), CanDecideOffer()]
         return super().get_permissions()
 
-    def perform_create(self, serializer):
-        serializer.save(
-            provider=self.request.user.provider,
-            submitted_by=self.request.user,
-            status=OfferStatus.DRAFT,
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        specialist = serializer.validated_data.get("proposed_specialist")
+
+        if not specialist:
+            raise ValidationError("No specialist/provider found")
+
+        # Flowable-triggered request
+        if getattr(request, "is_flowable", False):
+            submitted_by = User.objects.filter(
+                provider=specialist.provider,
+                role=UserRole.SUPPLIER_REP
+            ).first()
+
+            if not submitted_by:
+                raise ValidationError(
+                    "No supplier representative found for this provider"
+                )
+
+            offer = serializer.save(
+                provider=specialist.provider,
+                submitted_by=submitted_by,
+                status=OfferStatus.DRAFT,
+            )
+        else:
+            # Normal user request
+            offer = serializer.save(
+                provider=specialist.provider,
+                submitted_by=request.user,
+                status=OfferStatus.DRAFT,
+            )
+
+        # IMPORTANT: return serialized offer with ID
+        response_serializer = ServiceOfferReadSerializer(offer)
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED,
         )
 
 
@@ -81,6 +119,9 @@ class ServiceOfferViewSet(
                 {"detail": "Only draft offers can be submitted."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        #TODO: Maybe need to check if proposed_specialist.provider != authenticated_provider
+        # reject offer.
 
         offer.status = OfferStatus.SUBMITTED
         offer.save(update_fields=["status"])
