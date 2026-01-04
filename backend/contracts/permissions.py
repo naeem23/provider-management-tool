@@ -7,10 +7,11 @@ class CanManageContracts(BasePermission):
     Contract Coordinator or Provider Admin.
     """
     def has_permission(self, request, view):
-        return request.user.role in [
-            UserRole.CONTRACT_COORDINATOR,
-            UserRole.PROVIDER_ADMIN,
-        ]
+        # Skip role check for Flowable requests
+        if getattr(request, 'is_flowable', False):
+            return True
+
+        return request.user.role == UserRole.CONTRACT_COORDINATOR
 
 
 class CanApproveContract(BasePermission):
@@ -18,4 +19,4 @@ class CanApproveContract(BasePermission):
     Only Provider Admin can activate contracts.
     """
     def has_permission(self, request, view):
-        return request.user.role == UserRole.PROVIDER_ADMIN
+        return request.user.role == UserRole.CONTRACT_COORDINATOR

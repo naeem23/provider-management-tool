@@ -10,9 +10,11 @@ from .serializers import (
     ContractVersionSerializer,
     PricingRuleSerializer,
 )
-from .permissions import CanManageContracts, CanApproveContract
+from .permissions import CanManageContracts
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
+from integrations.flowable_client import start_contract_negotiation
+from service_requests.permissions import IsAuthenticatedOrFlowable
 
 
 class ContractViewSet(
@@ -22,12 +24,12 @@ class ContractViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = Contract.objects.select_related("provider")
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrFlowable]
 
     def get_queryset(self):
         user = self.request.user
 
-        if user.is_staff or user.is_superuser:
+        if user.is_staff or user.is_superuser or getattr(self.request, "is_flowable", False):
             return self.queryset
 
         if user.provider_id:
@@ -42,7 +44,7 @@ class ContractViewSet(
 
     def get_permissions(self):
         if self.action == "create":
-            return [IsAuthenticated(), CanManageContracts()]
+            return [IsAuthenticatedOrFlowable(), CanManageContracts()]
         return super().get_permissions()
 
     @action(detail=True, methods=["post"])
@@ -60,6 +62,9 @@ class ContractViewSet(
         
         # AUDIT LOG
         log_audit_event(AuditAction.STATUS_CHANGE, contract)
+
+        # Start BPMN
+        start_contract_negotiation(contract_id=contract.id)
 
         return Response({"status": "IN_NEGOTIATION"})
 
@@ -80,6 +85,24 @@ class ContractViewSet(
         log_audit_event(AuditAction.STATUS_CHANGE, contract)
 
         return Response({"status": "ACTIVE"})
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        contract = self.get_object()
+
+        if contract.status not in [ContractStatus.DRAFT, ContractStatus.IN_NEGOTIATION,]:
+            return Response(
+                {"detail": "Only draft or negotiated contracts can be rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contract.status = ContractStatus.REJECTED
+        contract.save(update_fields=["status"])
+
+        # Audit + notification automatically triggered
+        log_audit_event(AuditAction.STATUS_CHANGE, contract)
+
+        return Response({"status": "REJECTED"})
 
 
 class ContractVersionViewSet(
