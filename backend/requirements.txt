@@ -7,3 +7,4 @@ python-dotenv==1.0.1
 sqlparse==0.5.4
 drf-nested-routers==0.95.0
 requests==2.32.5
+django-cors-headers==4.9.0

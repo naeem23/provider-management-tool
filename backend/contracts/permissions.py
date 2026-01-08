@@ -2,9 +2,9 @@ from rest_framework.permissions import BasePermission
 from accounts.models import UserRole
 
 
-class CanManageContracts(BasePermission):
+class IsContractCoordinator(BasePermission):
     """
-    Contract Coordinator or Provider Admin.
+    Contract Coordinator.
     """
     def has_permission(self, request, view):
         # Skip role check for Flowable requests

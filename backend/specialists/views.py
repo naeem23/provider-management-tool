@@ -18,7 +18,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated,]
 
     def get_permissions(self):
-        if self.action in ["create", "update", "partial_update"]:
+        if self.action in ["create", "update", "partial_update", "destroy"]:
             return [IsAuthenticated(), IsProviderAdmin()]
         return [IsAuthenticated()]
 
@@ -27,4 +27,8 @@ class SpecialistViewSet(viewsets.ModelViewSet):
         if user.is_staff or user.is_superuser:
             return Specialist.objects.all()
         return Specialist.objects.filter(provider=user.provider)
+
+    def perform_create(self, serializer):
+        # Auto-assign provider based on logged-in user
+        serializer.save(provider=self.request.user.provider)
 

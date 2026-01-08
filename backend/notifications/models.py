@@ -7,8 +7,9 @@ class Notification(models.Model):
 
     user = models.ForeignKey(
         "accounts.User", 
-        on_delete=models.CASCADE, 
-        related_name="notifications"
+        on_delete=models.SET_NULL, 
+        related_name="notifications",
+        null=True, blank=True
     )
 
     title       = models.CharField(max_length=255)

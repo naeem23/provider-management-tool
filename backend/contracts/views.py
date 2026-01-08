@@ -2,6 +2,9 @@ from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.utils import timezone
+from django.db.models import Q, Count
+from datetime import timedelta
 
 from .models import Contract, ContractVersion, PricingRule, ContractStatus
 from .serializers import (
@@ -10,7 +13,7 @@ from .serializers import (
     ContractVersionSerializer,
     PricingRuleSerializer,
 )
-from .permissions import CanManageContracts
+from .permissions import IsContractCoordinator
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
 from integrations.flowable_client import start_contract_negotiation
@@ -24,7 +27,7 @@ class ContractViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = Contract.objects.select_related("provider")
-    permission_classes = [IsAuthenticatedOrFlowable]
+    permission_classes = [IsAuthenticatedOrFlowable, IsContractCoordinator]
 
     def get_queryset(self):
         user = self.request.user
@@ -42,10 +45,10 @@ class ContractViewSet(
             return ContractCreateSerializer
         return ContractReadSerializer
 
-    def get_permissions(self):
-        if self.action == "create":
-            return [IsAuthenticatedOrFlowable(), CanManageContracts()]
-        return super().get_permissions()
+    # def get_permissions(self):
+    #     if self.action in ["create", "metrics"]:
+    #         return [IsAuthenticatedOrFlowable(), IsContractCoordinator()]
+    #     return super().get_permissions()
 
     @action(detail=True, methods=["post"])
     def start_negotiation(self, request, pk=None):
@@ -104,6 +107,41 @@ class ContractViewSet(
 
         return Response({"status": "REJECTED"})
 
+    @action(detail=False, methods=['get'], url_path='metrics')
+    def metrics(self, request):
+        """
+        Get dashboard metrics for contract coordinator.
+        Returns counts of contracts by status.
+        """
+        user = request.user
+        
+        # Define "expiring soon" threshold (e.g., 30 days)
+        expiring_threshold = timezone.now() + timedelta(days=30)
+
+        # Filter contracts that are pending, active, in negotiation, OR expiring soon
+        contract_counts = self.get_queryset().aggregate(
+            in_negotiation=Count('id', filter=Q(status='IN_NEGOTIATION')),
+            pending_contracts=Count('id', filter=Q(status='PENDING')),
+            active_contracts=Count('id', filter=Q(status='ACTIVE')),
+            expiring_contracts=Count(
+                'id', 
+                filter=Q(
+                    status='ACTIVE',
+                    valid_to__lte=expiring_threshold,
+                    valid_to__gte=timezone.now()
+                )
+            )
+        )
+        
+        metrics_data = {
+            "in_negotiation": contract_counts.get('in_negotiation', 0),
+            "pending_contracts": contract_counts.get('pending_contracts', 0),
+            "active_contracts": contract_counts.get('active_contracts', 0),
+            "expiring_contracts": contract_counts.get('active_contracts', 0),
+        }
+        
+        return Response(metrics_data, status=status.HTTP_200_OK)
+
 
 class ContractVersionViewSet(
     mixins.CreateModelMixin,
@@ -111,7 +149,7 @@ class ContractVersionViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = ContractVersionSerializer
-    permission_classes = [IsAuthenticated, CanManageContracts]
+    permission_classes = [IsAuthenticated, IsContractCoordinator]
 
     def get_queryset(self):
         return ContractVersion.objects.filter(
@@ -137,7 +175,7 @@ class ContractVersionViewSet(
 
 class PricingRuleViewSet(viewsets.ModelViewSet):
     serializer_class = PricingRuleSerializer
-    permission_classes = [IsAuthenticated, CanManageContracts]
+    permission_classes = [IsAuthenticated, IsContractCoordinator]
 
     def get_queryset(self):
         return PricingRule.objects.filter(

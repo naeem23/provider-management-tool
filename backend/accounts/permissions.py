@@ -4,7 +4,21 @@ from .models import UserRole
 
 class IsProviderAdmin(BasePermission):
     def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.role == UserRole.PROVIDER_ADMIN)
+        return bool(
+            request.user 
+            and request.user.is_authenticated 
+            and request.user.role == UserRole.PROVIDER_ADMIN
+        )
+
+
+class IsProviderAdminOrOwner(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        # Provider Admin can do anything
+        if request.user.role == UserRole.PROVIDER_ADMIN:
+            return True
+
+        # Otherwise, user can act only on own object
+        return bool(obj == request.user)
 
 
 class IsSameProviderOrStaff(BasePermission):

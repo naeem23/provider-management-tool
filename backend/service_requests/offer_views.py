@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
+from django.db.models import Q, Count
 
 from service_orders.models import ServiceOrder
 from .models import ServiceOffer, OfferStatus, RequestStatus
@@ -57,7 +58,7 @@ class ServiceOfferViewSet(
         return ServiceOfferReadSerializer
 
     def get_permissions(self):
-        if self.action == "create":
+        if self.action in ["create", "metrics"]:
             return [IsAuthenticatedOrFlowable(), IsSupplierRep()]
         if self.action in ["update", "partial_update"]:
             return [IsAuthenticatedOrFlowable(), IsSupplierRep(), CanEditDraftOffer()]
@@ -228,3 +229,33 @@ class ServiceOfferViewSet(
             {"detail": "Offer rejected."},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=['get'], url_path='metrics')
+    def metrics(self, request):
+        """
+        Get dashboard metrics for supplier representative.
+        Returns counts of offers by status and available specialists.
+        """
+        user = request.user
+        
+        # Get offer counts by status
+        offer_counts = self.get_queryset().aggregate(
+            accepted_offers=Count('id', filter=Q(status='ACCEPTED')),
+            pending_offers=Count('id', filter=Q(status='SUBMITTED')),
+            rejected_offers=Count('id', filter=Q(status='REJECTED'))
+        )
+        
+        # Get available specialists count
+        available_specialists = Specialist.objects.filter(
+            provider=request.user.provider,
+            status='Active'
+        ).count()
+        
+        metrics_data = {
+            "accepted_offers": offer_counts.get('accepted_offers', 0),
+            "pending_offers": offer_counts.get('pending_offers', 0),
+            "rejected_offers": offer_counts.get('rejected_offers', 0),
+            "available_specialists": available_specialists
+        }
+        
+        return Response(metrics_data, status=status.HTTP_200_OK)

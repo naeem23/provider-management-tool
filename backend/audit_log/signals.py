@@ -77,13 +77,24 @@ def log_delete(sender, instance, **kwargs):
 
     user, role, ip, endpoint = _get_actor_data()
 
+    # SKIP logging when user deletes himself
+    if user and sender.__name__ == "User" and user == instance:
+        return
+
+    # Skip cascaded User deletes when Provider is deleted
+    if sender.__name__ == "User" and user and instance.provider and user.provider == instance.provider:
+        return
+
+    # skip Provider delete logging entirely
+    if sender.__name__ == "Provider":
+        return
+
     AuditLog.objects.create(
         actor=user,
         actor_role=role or "",
         action=AuditAction.DELETE,
         entity_type=sender.__name__,
         entity_id=str(instance.pk),
-        # before=serialize_for_json(model_to_dict(instance)),
         before=serialize_for_json(
             model_to_dict(
                 instance,
@@ -94,7 +105,6 @@ def log_delete(sender, instance, **kwargs):
         ip_address=ip,
         endpoint=endpoint,
     )
-
 
 
 def is_running_migrations():

@@ -3,7 +3,7 @@ import uuid
 
 
 class ContractStatus(models.TextChoices):
-    DRAFT          = "DRAFT", "Draft"
+    PENDING        = "PENDING", "Pending Approval"
     IN_NEGOTIATION = "IN_NEGOTIATION", "In Negotiation"
     ACTIVE         = "ACTIVE", "Active"
     EXPIRED        = "EXPIRED", "Expired"
@@ -15,7 +15,7 @@ class Contract(models.Model):
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="contracts")
 
     contract_code     = models.CharField(max_length=64, unique=True)
-    status            = models.CharField(max_length=32, choices=ContractStatus.choices, default=ContractStatus.DRAFT)
+    status            = models.CharField(max_length=32, choices=ContractStatus.choices, default=ContractStatus.PENDING)
 
     valid_from        = models.DateField(null=True, blank=True)
     valid_to          = models.DateField(null=True, blank=True)

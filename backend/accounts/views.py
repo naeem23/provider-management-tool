@@ -8,9 +8,10 @@ from rest_framework import status
 from .serializers import (
     UserReadSerializer,
     UserCreateSerializer,
+    UserUpdateSerializer,
     ChangePasswordSerializer,
 )
-from .permissions import IsProviderAdmin
+from .permissions import IsProviderAdmin, IsProviderAdminOrOwner
 from .models import UserRole
 
 User = get_user_model()
@@ -21,6 +22,7 @@ class UserViewSet(
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
     viewsets.GenericViewSet
 ):
     """
@@ -35,6 +37,8 @@ class UserViewSet(
     def get_serializer_class(self):
         if self.action == "create":
             return UserCreateSerializer
+        if self.action in ["update", "partial_update"]:
+            return UserUpdateSerializer
         return UserReadSerializer
 
     def get_queryset(self):
@@ -47,15 +51,20 @@ class UserViewSet(
 
         # provider isolation: see only your provider’s users
         if user.provider_id:
-            return qs.filter(provider_id=user.provider_id)
+            if self.action == "list":
+                return qs.filter(provider_id=user.provider_id).exclude(username=user.username)
+            else:
+                return qs.filter(provider_id=user.provider_id)
 
         # if user has no provider assigned, only themselves
         return qs.filter(id=user.id)
 
     def get_permissions(self):
-        # Only Provider Admin can create/update users (except "me" actions)
-        if self.action in ["create", "update", "partial_update"]:
+        if self.action in ["create", "list"]:
             return [IsAuthenticated(), IsProviderAdmin()]
+
+        if self.action in ["retrieve", "update", "partial_update", "destroy"]:
+            return [IsAuthenticated(), IsProviderAdminOrOwner()]
         return super().get_permissions()
 
     @action(detail=False, methods=["get"], url_path="me")
