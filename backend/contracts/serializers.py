@@ -1,72 +1,85 @@
 from rest_framework import serializers
-from .models import Contract, ContractVersion, PricingRule
+from django.utils import timezone
+
+from .models import Contract, ContractVersion
 
 
 class ContractReadSerializer(serializers.ModelSerializer):
-    provider_name = serializers.CharField(source="provider.name", read_only=True)
+    service_request_id = serializers.UUIDField(source="service_request.id", read_only=True)
+    role_name = serializers.CharField(source="service_request.role_name", read_only=True)
+    service_domain = serializers.CharField(source="service_request.domain", read_only=True)
+    specialist_name = serializers.SerializerMethodField()
+    expected_rate = serializers.SerializerMethodField()
+    days_left = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
         fields = [
             "id",
             "contract_code",
+            "title",
+            "service_request_id",
+            "role_name",
+            "service_domain",
             "provider",
-            "provider_name",
+            "specialist_name",
+            "offered_daily_rate",
+            "negotiated_rate",
+            "expected_rate",
             "status",
+            "response_deadline",
+            "days_left",
             "valid_from",
             "valid_to",
-            "functional_weight",
-            "commercial_weight",
+            "terms_and_condition",
             "created_at",
             "updated_at",
         ]
+        read_only_fields = [
+            "id",
+            "service_request_id",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_specialist_name(self, obj):
+        if obj.winning_offer and obj.winning_offer.proposed_specialist:
+            return obj.winning_offer.proposed_specialist.full_name
+        return None
+
+    def get_days_left(self, obj):
+        if not obj.response_deadline:
+            return None
+
+        today = timezone.now().date()
+
+        days = (obj.response_deadline - today).days
+        return max(days, 0)
+
+    def get_expected_rate(self, obj):
+        if obj.winning_offer:
+            return obj.winning_offer.daily_rate
+        return None
 
 
 class ContractCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
-        fields = [
-            "contract_code",
-            "provider",
-            "valid_from",
-            "valid_to",
-            "functional_weight",
-            "commercial_weight",
+        fields = "__all__"
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
         ]
 
 
 class ContractVersionSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.CharField(
-        source="created_by.username", read_only=True
-    )
-
     class Meta:
         model = ContractVersion
-        fields = [
-            "id",
-            "contract",
-            "version_number",
-            "payload",
-            "comment",
-            "created_by",
-            "created_by_name",
-            "created_at",
-        ]
+        fields = "__all__"
         read_only_fields = [
-            "version_number",
-            "created_by",
-            "created_at",
-        ]
-
-
-class PricingRuleSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PricingRule
-        fields = [
             "id",
             "contract",
-            "role_name",
-            "experience_level",
-            "technology_level",
-            "max_daily_rate",
+            "version_number",
+            "created_at",
         ]
