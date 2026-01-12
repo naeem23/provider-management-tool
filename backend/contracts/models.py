@@ -14,6 +14,7 @@ class ContractStatus(models.TextChoices):
 
 class Contract(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    external_id = models.CharField(max_length=255, blank=True, null=True)
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="contracts")
     service_request = models.ForeignKey("service_requests.ServiceRequest", on_delete=models.SET_NULL, null=True, blank=True)
     winning_offer = models.ForeignKey("service_requests.ServiceOffer", on_delete=models.SET_NULL, null=True, blank=True)
@@ -56,6 +57,17 @@ class Contract(models.Model):
         random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         return f"CNT-{random_part}"
 
+    @property
+    def specialist(self):
+        if self.winning_offer and self.winning_offer.proposed_specialist::
+            return self.winning_offer.proposed_specialist.full_name
+        return None
+
+    def expected_rate(self):
+        if self.winning_offer:
+            return self.winning_offer.daily_rate
+        return None
+        
 
 class ContractVersion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

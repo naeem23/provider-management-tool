@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class FlowableService:
+class FlowableContractService:
     """Service class to interact with Flowable REST API"""
     
     def __init__(self):
@@ -249,4 +249,4 @@ class FlowableService:
 
 
 # Singleton instance
-flowable_service = FlowableService()
+flowable_contract_service = FlowableContractService()
