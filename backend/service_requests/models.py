@@ -35,8 +35,8 @@ class ServiceRequest(models.Model):
 
 
 class OfferStatus(models.TextChoices):
-    DRAFT     = "DRAFT", "Draft"
     SUBMITTED = "SUBMITTED", "Submitted"
+    UNDER_REVIEW = "UNDER_REVIEW", "Under Review"
     WITHDRAWN = "WITHDRAWN", "Withdrawn"
     REJECTED  = "REJECTED", "Rejected"
     ACCEPTED  = "ACCEPTED", "Accepted"
@@ -49,7 +49,7 @@ class ServiceOffer(models.Model):
     provider     = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="offers")
     submitted_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL)
 
-    status       = models.CharField(max_length=16, choices=OfferStatus.choices, default=OfferStatus.DRAFT)
+    status       = models.CharField(max_length=16, choices=OfferStatus.choices, default=OfferStatus.SUBMITTED)
 
     proposed_specialist = models.ForeignKey(
         "specialists.Specialist", 

@@ -5,13 +5,14 @@ from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Q, Count
 from datetime import timedelta
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 
-from .models import Contract, ContractVersion, PricingRule, ContractStatus
+from .models import Contract, ContractVersion, ContractStatus
 from .serializers import (
     ContractReadSerializer,
     ContractCreateSerializer,
     ContractVersionSerializer,
-    PricingRuleSerializer,
 )
 from .permissions import IsContractCoordinator
 from audit_log.utils import log_audit_event
@@ -31,30 +32,50 @@ class ContractViewSet(
 
     def get_queryset(self):
         user = self.request.user
+        excluded_statuses = [
+            "ACTIVE",
+            "REJECTED",
+            "EXPIRED",
+        ]
+        queryset = self.queryset
 
-        if user.is_staff or user.is_superuser or getattr(self.request, "is_flowable", False):
-            return self.queryset
+        # ---- role-based filtering ----
+        if not (user.is_staff or user.is_superuser or getattr(self.request, "is_flowable", False)):
+            if user.provider_id:
+                queryset = queryset.filter(provider_id=user.provider_id)
+            else:
+                return queryset.none()
 
-        if user.provider_id:
-            return self.queryset.filter(provider_id=user.provider_id)
+        # ---- search-based filtering (NEW) ----
+        search = self.request.query_params.get("q")
 
-        return self.queryset.none()
+        if search == "active":
+            queryset = queryset.filter(status="ACTIVE")
+
+        elif search == "expiring":
+            today = timezone.now()
+            soon = today + timedelta(days=30)
+
+            queryset = queryset.filter(
+                status="ACTIVE",
+                valid_to__range=(today, soon)
+            )
+
+        elif search == "published-only":
+            queryset = queryset.exclude(status__in=excluded_statuses)
+
+        return queryset
 
     def get_serializer_class(self):
         if self.action == "create":
             return ContractCreateSerializer
         return ContractReadSerializer
 
-    # def get_permissions(self):
-    #     if self.action in ["create", "metrics"]:
-    #         return [IsAuthenticatedOrFlowable(), IsContractCoordinator()]
-    #     return super().get_permissions()
-
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["get"], url_path="start-negotiation")
     def start_negotiation(self, request, pk=None):
         contract = self.get_object()
 
-        if contract.status != ContractStatus.DRAFT:
+        if contract.status != ContractStatus.PENDING:
             return Response(
                 {"detail": "Only draft contracts can enter negotiation."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -143,11 +164,8 @@ class ContractViewSet(
         return Response(metrics_data, status=status.HTTP_200_OK)
 
 
-class ContractVersionViewSet(
-    mixins.CreateModelMixin,
-    mixins.ListModelMixin,
-    viewsets.GenericViewSet,
-):
+class ContractVersionViewSet(viewsets.ModelViewSet):
+    queryset = ContractVersion.objects.select_related("contract")
     serializer_class = ContractVersionSerializer
     permission_classes = [IsAuthenticated, IsContractCoordinator]
 
@@ -157,30 +175,26 @@ class ContractVersionViewSet(
         ).order_by("-version_number")
 
     def perform_create(self, serializer):
-        contract = Contract.objects.get(pk=self.kwargs["contract_pk"])
-        last_version = (
-            ContractVersion.objects.filter(contract=contract)
-            .order_by("-version_number")
-            .first()
+        contract = get_object_or_404(
+            Contract,
+            id=self.kwargs["contract_pk"]
         )
 
-        next_version = 1 if not last_version else last_version.version_number + 1
+        with transaction.atomic():
+            last_version = (
+                ContractVersion.objects
+                .filter(contract=contract)
+                .order_by("-version_number")
+                .first()
+            )
 
-        serializer.save(
-            contract=contract,
-            version_number=next_version,
-            created_by=self.request.user,
-        )
+            next_version = (
+                last_version.version_number + 1
+                if last_version
+                else 1
+            )
 
-
-class PricingRuleViewSet(viewsets.ModelViewSet):
-    serializer_class = PricingRuleSerializer
-    permission_classes = [IsAuthenticated, IsContractCoordinator]
-
-    def get_queryset(self):
-        return PricingRule.objects.filter(
-            contract_id=self.kwargs["contract_pk"]
-        )
-
-    def perform_create(self, serializer):
-        serializer.save(contract_id=self.kwargs["contract_pk"])
+            serializer.save(
+                contract=contract,
+                version_number=next_version
+            )

@@ -1,147 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<definitions
-  xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xmlns:flowable="http://flowable.org/bpmn"
-  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-  xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
-  xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
-  typeLanguage="http://www.w3.org/2001/XMLSchema"
-  expressionLanguage="http://www.w3.org/1999/XPath"
-  targetNamespace="http://provider.management/contracts">
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.flowable.org/processdef">
 
-  <process
-    id="contractNegotiation"
-    name="Contract Negotiation"
-    isExecutable="true">
+    <process id="contractNegotiationProcess" name="Contract Negotiation Process" isExecutable="true">
 
-    <!-- ===================== -->
-    <!-- Start Event -->
-    <!-- ===================== -->
-    <startEvent id="startEvent" name="Start Negotiation">
-      <outgoing>flow_start_to_startNegotiation</outgoing>
-    </startEvent>
+        <startEvent id="startEvent" name="Start Negotiation"/>
 
-    <!-- ===================== -->
-    <!-- Start Negotiation -->
-    <!-- ===================== -->
-    <serviceTask
-      id="startNegotiationTask"
-      name="Start Negotiation (Django)"
-      flowable:type="http">
-      
-      <extensionElements>
-        <flowable:field name="requestMethod">
-          <flowable:string><![CDATA[POST]]></flowable:string>
-        </flowable:field>
-        <flowable:field name="requestUrl">
-          <flowable:expression><![CDATA[${baseApiUrl}/api/contracts/contracts/${contractId}/start_negotiation/]]></flowable:expression>
-        </flowable:field>
-        <flowable:field name="requestHeaders">
-          <flowable:expression><![CDATA[Content-Type: application/json
-X-FLOWABLE-API-KEY: super-secret-flowable-key]]></flowable:expression>
-        </flowable:field>
-      </extensionElements>
-      
-      <incoming>flow_start_to_startNegotiation</incoming>
-      <outgoing>flow_to_negotiate</outgoing>
-    </serviceTask>
+        <sequenceFlow sourceRef="startEvent" targetRef="reviewContractTask"/>
 
-    <!-- ===================== -->
-    <!-- Negotiate -->
-    <!-- ===================== -->
-    <userTask
-      id="negotiateTask"
-      name="Negotiate Contract"
-      flowable:candidateGroups="contract_coordinator">
-      <incoming>flow_to_negotiate</incoming>
-      <outgoing>flow_to_gateway</outgoing>
-    </userTask>
+        <!-- User Task: Review and Respond to Contract -->
+        <userTask id="reviewContractTask" 
+                  name="Review Contract" 
+                  flowable:candidateGroups="contract_coordinator">
+            <documentation>
+                Review contract and take action: Accept, Reject, or Submit Counter Offer
+            </documentation>
+        </userTask>
 
-    <!-- ===================== -->
-    <!-- Decision Gateway -->
-    <!-- ===================== -->
-    <exclusiveGateway id="decisionGateway" name="Approve or Reject?">
-      <incoming>flow_to_gateway</incoming>
-      <outgoing>flow_approve</outgoing>
-      <outgoing>flow_reject</outgoing>
-    </exclusiveGateway>
+        <sequenceFlow sourceRef="reviewContractTask" targetRef="checkDecisionGateway"/>
 
-    <!-- ===================== -->
-    <!-- Approve Contract -->
-    <!-- ===================== -->
-    <serviceTask
-      id="activateContractTask"
-      name="Activate Contract (Django)"
-      flowable:type="http">
-      
-      <extensionElements>
-        <flowable:field name="requestMethod">
-          <flowable:string><![CDATA[POST]]></flowable:string>
-        </flowable:field>
-        <flowable:field name="requestUrl">
-          <flowable:expression><![CDATA[${baseApiUrl}/api/contracts/contracts/${contractId}/activate/]]></flowable:expression>
-        </flowable:field>
-        <flowable:field name="requestHeaders">
-          <flowable:expression><![CDATA[Content-Type: application/json
-X-FLOWABLE-API-KEY: super-secret-flowable-key]]></flowable:expression>
-        </flowable:field>
-      </extensionElements>
-      
-      <incoming>flow_approve</incoming>
-      <outgoing>flow_to_end_approve</outgoing>
-    </serviceTask>
+        <!-- Gateway: Check Decision -->
+        <exclusiveGateway id="checkDecisionGateway" name="Check Decision"/>
 
-    <!-- ===================== -->
-    <!-- Reject Contract -->
-    <!-- ===================== -->
-    <serviceTask
-      id="rejectContractTask"
-      name="Reject Contract (Django)"
-      flowable:type="http">
-      
-      <extensionElements>
-        <flowable:field name="requestMethod">
-          <flowable:string><![CDATA[POST]]></flowable:string>
-        </flowable:field>
-        <flowable:field name="requestUrl">
-          <flowable:expression><![CDATA[${baseApiUrl}/api/contracts/contracts/${contractId}/reject/]]></flowable:expression>
-        </flowable:field>
-        <flowable:field name="requestHeaders">
-          <flowable:expression><![CDATA[Content-Type: application/json
-X-FLOWABLE-API-KEY: super-secret-flowable-key]]></flowable:expression>
-        </flowable:field>
-      </extensionElements>
-      
-      <incoming>flow_reject</incoming>
-      <outgoing>flow_to_end_reject</outgoing>
-    </serviceTask>
+        <!-- Flow: Accept -->
+        <sequenceFlow sourceRef="checkDecisionGateway" targetRef="contractAcceptedEnd">
+            <conditionExpression xsi:type="tFormalExpression">
+                <![CDATA[${action == 'accept'}]]>
+            </conditionExpression>
+        </sequenceFlow>
 
-    <!-- ===================== -->
-    <!-- End Event -->
-    <!-- ===================== -->
-    <endEvent id="endEvent" name="Negotiation Finished">
-      <incoming>flow_to_end_approve</incoming>
-      <incoming>flow_to_end_reject</incoming>
-    </endEvent>
+        <!-- Flow: Reject -->
+        <sequenceFlow sourceRef="checkDecisionGateway" targetRef="contractRejectedEnd">
+            <conditionExpression xsi:type="tFormalExpression">
+                <![CDATA[${action == 'reject'}]]>
+            </conditionExpression>
+        </sequenceFlow>
 
-    <!-- ===================== -->
-    <!-- Sequence Flows -->
-    <!-- ===================== -->
-    <sequenceFlow id="flow_start_to_startNegotiation" sourceRef="startEvent" targetRef="startNegotiationTask"/>
-    <sequenceFlow id="flow_to_negotiate" sourceRef="startNegotiationTask" targetRef="negotiateTask"/>
-    <sequenceFlow id="flow_to_gateway" sourceRef="negotiateTask" targetRef="decisionGateway"/>
-    
-    <sequenceFlow id="flow_approve" sourceRef="decisionGateway" targetRef="activateContractTask">
-      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${decision == 'approve'}]]></conditionExpression>
-    </sequenceFlow>
-    
-    <sequenceFlow id="flow_reject" sourceRef="decisionGateway" targetRef="rejectContractTask">
-      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${decision == 'reject'}]]></conditionExpression>
-    </sequenceFlow>
-    
-    <sequenceFlow id="flow_to_end_approve" sourceRef="activateContractTask" targetRef="endEvent"/>
-    <sequenceFlow id="flow_to_end_reject" sourceRef="rejectContractTask" targetRef="endEvent"/>
+        <!-- Flow: Counter Offer -->
+        <sequenceFlow sourceRef="checkDecisionGateway" targetRef="counterOfferSubmittedEnd">
+            <conditionExpression xsi:type="tFormalExpression">
+                <![CDATA[${action == 'counter_offer'}]]>
+            </conditionExpression>
+        </sequenceFlow>
 
-  </process>
+        <!-- End Events -->
+        <endEvent id="contractAcceptedEnd" name="Contract Accepted"/>
+        <endEvent id="contractRejectedEnd" name="Contract Rejected"/>
+        <endEvent id="counterOfferSubmittedEnd" name="Counter Offer Submitted"/>
+
+    </process>
+
 </definitions>

@@ -58,6 +58,8 @@ class UserCreateSerializer(serializers.ModelSerializer):
         user = User(**validated_data, provider=provider)
         user.set_password(password)
         user.save()
+        if user.role in ["SUPPLIER_REP", "CONTRACT_COORDINATOR"]:
+            user.sync_to_flowable()
         return user
 
 
