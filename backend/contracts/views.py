@@ -32,6 +32,11 @@ class ContractViewSet(
 
     def get_queryset(self):
         user = self.request.user
+        excluded_statuses = [
+            "ACTIVE",
+            "REJECTED",
+            "EXPIRED",
+        ]
         queryset = self.queryset
 
         # ---- role-based filtering ----
@@ -56,6 +61,9 @@ class ContractViewSet(
                 valid_to__range=(today, soon)
             )
 
+        elif search == "published-only":
+            queryset = queryset.exclude(status__in=excluded_statuses)
+
         return queryset
 
     def get_serializer_class(self):
@@ -63,7 +71,7 @@ class ContractViewSet(
             return ContractCreateSerializer
         return ContractReadSerializer
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["get"], url_path="start-negotiation")
     def start_negotiation(self, request, pk=None):
         contract = self.get_object()
 
