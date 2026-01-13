@@ -21,13 +21,14 @@ class Contract(models.Model):
 
     title             = models.CharField(max_length=255)
     contract_code     = models.CharField(max_length=32, unique=True, editable=False)
+    domain            = models.CharField(max_length=128, blank=True, null=True)
     status            = models.CharField(max_length=32, choices=ContractStatus.choices, default=ContractStatus.PENDING)
 
-    offered_daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    proposed_rate = models.DecimalField(max_digits=10, decimal_places=2)
     negotiated_rate = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     response_deadline  = models.DateField()
     valid_from        = models.DateField()
-    valid_to          = models.DateField()
+    valid_till          = models.DateField()
     terms_and_condition    = models.TextField(blank=True)
 
     created_at        = models.DateTimeField(auto_now_add=True)
@@ -59,11 +60,12 @@ class Contract(models.Model):
 
     @property
     def specialist(self):
-        if self.winning_offer and self.winning_offer.proposed_specialist::
+        if self.winning_offer and self.winning_offer.proposed_specialist:
             return self.winning_offer.proposed_specialist.full_name
         return None
 
-    def expected_rate(self):
+    @property
+    def providers_expected_rate(self):
         if self.winning_offer:
             return self.winning_offer.daily_rate
         return None
