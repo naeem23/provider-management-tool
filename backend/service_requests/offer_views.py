@@ -1,7 +1,7 @@
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db import transaction
 from django.db.models import Q, Count
@@ -11,19 +11,18 @@ from .models import ServiceOffer, OfferStatus, RequestStatus
 from .offer_serializers import (
     ServiceOfferReadSerializer,
     ServiceOfferCreateSerializer,
-    ServiceOfferUpdateSerializer,
 )
 from .permissions import (
     IsSupplierRep,
     CanEditDraftOffer,
     CanViewOffer,
     CanDecideOffer,
-    IsAuthenticatedOrFlowable,
 )
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
 from specialists.models import Specialist
 from accounts.models import User, UserRole
+from notifications.services import notify_roles
 
 
 class ServiceOfferViewSet(
@@ -36,7 +35,7 @@ class ServiceOfferViewSet(
     queryset = ServiceOffer.objects.select_related(
         "request", "provider", "proposed_specialist"
     )
-    permission_classes = [IsAuthenticatedOrFlowable]
+    permission_classes = [IsAuthenticated,]
 
     def get_queryset(self):
         user = self.request.user
@@ -51,86 +50,18 @@ class ServiceOfferViewSet(
         return self.queryset.none()
 
     def get_serializer_class(self):
-        if self.action == "create":
+        if self.action == ["create", "update", "partial_update"]:
             return ServiceOfferCreateSerializer
-        if self.action in ["update", "partial_update"]:
-            return ServiceOfferUpdateSerializer
         return ServiceOfferReadSerializer
 
     def get_permissions(self):
         if self.action in ["create", "metrics"]:
-            return [IsAuthenticatedOrFlowable(), IsSupplierRep()]
-        if self.action in ["update", "partial_update"]:
-            return [IsAuthenticatedOrFlowable(), IsSupplierRep(), CanEditDraftOffer()]
-        if self.action in ["accept", "reject"]:
-            return [IsAuthenticatedOrFlowable(), CanDecideOffer()]
+            return [IsAuthenticated(), IsSupplierRep()]
+        if self.action in ["update", "partial_update", "withdraw"]:
+            return [IsAuthenticated(), IsSupplierRep(), CanEditDraftOffer()]
+        if self.action == "update_status":
+            return [AllowAny(),]
         return super().get_permissions()
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        specialist = serializer.validated_data.get("proposed_specialist")
-
-        if not specialist:
-            raise ValidationError("No specialist/provider found")
-
-        # Flowable-triggered request
-        if getattr(request, "is_flowable", False):
-            submitted_by = User.objects.filter(
-                provider=specialist.provider,
-                role=UserRole.SUPPLIER_REP
-            ).first()
-
-            if not submitted_by:
-                raise ValidationError(
-                    "No supplier representative found for this provider"
-                )
-
-            offer = serializer.save(
-                provider=specialist.provider,
-                submitted_by=submitted_by,
-                status=OfferStatus.DRAFT,
-            )
-        else:
-            # Normal user request
-            offer = serializer.save(
-                provider=specialist.provider,
-                submitted_by=request.user,
-                status=OfferStatus.DRAFT,
-            )
-
-        # IMPORTANT: return serialized offer with ID
-        response_serializer = ServiceOfferReadSerializer(offer)
-        return Response(
-            response_serializer.data,
-            status=status.HTTP_201_CREATED,
-        )
-
-
-    @action(detail=True, methods=["post"])
-    def submit(self, request, pk=None):
-        """
-        Submit a draft offer.
-        """
-        offer = self.get_object()
-
-        if offer.status != OfferStatus.DRAFT:
-            return Response(
-                {"detail": "Only draft offers can be submitted."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        #TODO: Maybe need to check if proposed_specialist.provider != authenticated_provider
-        # reject offer.
-
-        offer.status = OfferStatus.SUBMITTED
-        offer.save(update_fields=["status"])
-        
-        # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, offer)
-
-        return Response({"status": "SUBMITTED"})
 
 
     @action(detail=True, methods=["post"])
@@ -140,9 +71,9 @@ class ServiceOfferViewSet(
         """
         offer = self.get_object()
 
-        if offer.status not in [OfferStatus.DRAFT, OfferStatus.SUBMITTED]:
+        if offer.status not in [OfferStatus.DRAFT, OfferStatus.SUBMITTED, OfferStatus.UNDER_REVIEW]:
             return Response(
-                {"detail": "Only draft or submitted offers can be withdrawn."},
+                {"detail": "Only draft/submitted/under review offers can be withdrawn."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -152,83 +83,68 @@ class ServiceOfferViewSet(
         # AUDIT LOG
         log_audit_event(AuditAction.STATUS_CHANGE, offer)
 
+        # Notification withdrawn 
+        notify_roles(
+            role="SUPPLIER_REP",
+            title="Offer status updated",
+            message=f"Offer status changed to {offer.status}.",
+            entity_type="ServiceOffer",
+            entity_id=offer.id,
+        )
+
         return Response({"status": "WITHDRAWN"})
 
 
-    @action(detail=True, methods=["post"], url_path="accept")
-    def accept(self, request, pk=None):
-        offer = self.get_object()
+    @action(detail=False, methods=["post"], url_path="update-status")
+    def update_status(self, request):
+        offer_id = request.data.get("id")
+        offer_status = request.data.get("status")
+
+        if not offer_id or not offer_status:
+            return Response(
+                {"detail": "offer id and status are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if offer_status not in ["ACCEPTED", "REJECTED"]:
+            return Response(
+                {"detail": "Valid status are ACCEPTED/REJECTED."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Fetch offer
+        offer = get_object_or_404(Offer, id=offer_id)
 
         if offer.status != OfferStatus.SUBMITTED:
             return Response(
-                {"detail": "Only submitted offers can be accepted."},
+                {"detail": "Only submitted offers can be accepted/rejected."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        service_request = offer.request
-
-        if service_request.status == RequestStatus.AWARDED:
-            return Response(
-                {"detail": "An offer has already been accepted for this request."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        with transaction.atomic():
-            # Accept this offer
-            offer.status = OfferStatus.ACCEPTED
-            offer.save(update_fields=["status"])
-
-            # Reject all other submitted offers
-            ServiceOffer.objects.filter(
-                request=service_request,
-                status=OfferStatus.SUBMITTED,
-            ).exclude(id=offer.id).update(status=OfferStatus.REJECTED)
-
-            # Update service request
-            service_request.status = RequestStatus.AWARDED
-            service_request.save(update_fields=["status"])
-
-            # Create ServiceOrder
-            ServiceOrder.objects.create(
-                request=service_request,
-                winning_offer=offer,
-                provider=offer.provider,
-                specialist=offer.proposed_specialist,
-                start_date=service_request.start_date,
-                end_date=service_request.end_date,
-                man_days=service_request.expected_man_days,
-                status="CREATED",
-            )
+        offer.status = offer_status
+        offer.save(update_fields=["status"])
         
         # AUDIT LOG
         log_audit_event(AuditAction.STATUS_CHANGE, offer)
 
+        # Notification
+        notify_roles(
+            role="SUPPLIER_REP",
+            title="Offer Status Updated",
+            message=f"Offer status changed to {offer.status}.",
+            entity_type="ServiceOffer",
+            entity_id=offer.id,
+        )
+        
         return Response(
-            {"detail": "Offer accepted and service order created."},
+            {
+                "message": "Offer status updated successfully.",
+                "offer_id": str(offer.id),
+                "status": offer.status,
+            },
             status=status.HTTP_200_OK,
         )
 
-
-    @action(detail=True, methods=["post"], url_path="reject")
-    def reject(self, request, pk=None):
-        offer = self.get_object()
-
-        if offer.status != OfferStatus.SUBMITTED:
-            return Response(
-                {"detail": "Only submitted offers can be rejected."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        offer.status = OfferStatus.REJECTED
-        offer.save(update_fields=["status"])
-
-        # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, offer)
-
-        return Response(
-            {"detail": "Offer rejected."},
-            status=status.HTTP_200_OK,
-        )
 
     @action(detail=False, methods=['get'], url_path='metrics')
     def metrics(self, request):

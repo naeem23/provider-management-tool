@@ -1,19 +1,18 @@
 from django.db.models import Count
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
-from .models import ServiceRequest, RequestStatus
-from .serializers import (
-    ServiceRequestReadSerializer,
-    ServiceRequestCreateSerializer,
-    ServiceRequestUpdateSerializer,
-)
+from .models import ServiceRequest, RequestStatus, ServiceOffer
+from .serializers import ServiceRequestSerializer
 from .permissions import CanManageServiceRequest, CanEditServiceRequest
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
-from integrations.flowable_client import start_service_request_bidding_process
+from integrations.flowable_client import *
+from notifications.services import notify_roles
+from providers.models import Provider
+from specialists.models import Specialist
 
 
 class ServiceRequestViewSet(
@@ -29,6 +28,7 @@ class ServiceRequestViewSet(
 
     queryset = ServiceRequest.objects.all()
     permission_classes = [IsAuthenticated]
+    serializer_class = ServiceRequestSerializer
 
     def get_queryset(self):
         qs = (
@@ -43,63 +43,298 @@ class ServiceRequestViewSet(
 
         return qs
 
-    def get_serializer_class(self):
-        if self.action == "create":
-            return ServiceRequestCreateSerializer
-        if self.action in ["update", "partial_update"]:
-            return ServiceRequestUpdateSerializer
-        return ServiceRequestReadSerializer
-
     def get_permissions(self):
         if self.action == "create":
-            return [IsAuthenticated(), CanManageServiceRequest()]
+            return [AllowAny(),]
         if self.action in ["update", "partial_update"]:
             return [IsAuthenticated(), CanManageServiceRequest(), CanEditServiceRequest()]
         return super().get_permissions()
 
-    @action(detail=True, methods=["post"])
-    def open(self, request, pk=None):
+
+    @action(detail=False, methods=["post"])
+    def generate(self, request):
         """
-        Open request for bidding (Flowable will hook here later).
-        """
-        service_request = self.get_object()
-
-        if service_request.status != RequestStatus.IMPORTED:
-            return Response(
-                {"detail": "Only imported requests can be opened."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        service_request.status = RequestStatus.OPEN
-        service_request.save(update_fields=["status"])
-
-        # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, service_request)
-
-        # Start Flowable BPMN
-        start_service_request_bidding_process(
-            service_request_id=service_request.id
-        )   
-
-        return Response({"status": "OPEN"})
-
-    @action(detail=True, methods=["post"])
-    def close(self, request, pk=None):
-        """
-        Close request for bidding.
-        """
-        service_request = self.get_object()
-
-        if service_request.status != RequestStatus.OPEN:
-            return Response(
-                {"detail": "Only open requests can be closed."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        service_request.status = RequestStatus.CLOSED
-        service_request.save(update_fields=["status"])
+        Create a Service Request
         
-        # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, service_request)
+        Steps:
+        1. Validate service request exists by filtering external_id
+        2. validate service request status is open
+        3. Create service request in local database with status "Open"
+        4. Create Flowable task for supplier_rep group
+        """
+    
+        # Step 1: Validate input data
+        serializer = ServiceRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        validated_data = serializer.validated_data
+        external_id = validated_data.get('id')
+        status = validated_data.get('status')
 
-        return Response({"status": "CLOSED"})
+        if status.lower() != 'open':
+            return Response(
+                {"details": "Only Open Service Requests are accepted"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Step 2: Get or create service request
+            service_request, created = ServiceRequest.objects.get_or_create(
+                external_id=external_id,
+                defaults={
+                    'title': validated_data.get('title'),
+                    'role_name': validated_data.get('role_name'),
+                    'technology': validated_data.get('technology'),
+                    'specialization': validated_data.get('specialization'),
+                    'experience_level': validated_data.get('experience_level'),
+                    'start_date': validated_data.get('start_date'),
+                    'end_date': validated_data.get('end_date'),
+                    'expected_man_days': validated_data.get('expected_man_days'),
+                    'criteria_json': validated_data.get('criteria_json'),
+                    'task_description': validated_data.get('task_description'),
+                    'offer_deadline': validated_data.get('offer_deadline'),
+                    'word_mode': validated_data.get('word_mode'),
+                }
+            )
+
+            # If service_request already exists, update it
+            if not created:
+                service_request.title = validated_data.get('title')
+                service_request.role_name =validated_data.get('role_name'),
+                service_request.technology = validated_data.get('technology'),
+                service_request.specialization = validated_data.get('specialization'),
+                service_request.experience_level = validated_data.get('experience_level'),
+                service_request.start_date = validated_data.get('start_date'),
+                service_request.end_date = validated_data.get('end_date'),
+                service_request.expected_man_days = validated_data.get('expected_man_days'),
+                service_request.criteria_json = validated_data.get('criteria_json'),
+                service_request.task_description = validated_data.get('task_description'),
+                service_request.offer_deadline = validated_data.get('offer_deadline'),
+                service_request.word_mode = validated_data.get('word_mode'),
+
+            service_request.status = 'OPEN'
+            service_request.save()
+
+            # Step 4: Create Flowable task
+            try:
+                flowable_result = generate_request_task(request_id=str(service_request.id))
+                
+            except Exception as e:
+                raise Exception(f"Failed to create Flowable task: {str(e)}")
+
+            # Notification Create 
+            notify_roles(
+                role="SUPPLIER_REP",
+                title="New Service Request",
+                message="A new service request has been created.",
+                entity_type="ServiceRequest",
+                entity_id=service_request.id,
+            )
+
+            # Step 5: Return success response
+            return Response({
+                'message': 'Contract and task created successfully',
+                'contract_id': service_request.id,
+                'status': service_request.status
+            }, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to start negotiation: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    @action(detail=False, methods=['get'], url_path='tasks')
+    def get_tasks(self, request):
+        """
+        Get all negotiation tasks for supplier_rep group
+        """
+        group_id = 'supplier_rep'
+        
+        try:
+            # Step 1: Get tasks from Flowable
+            flowable_tasks = get_tasks_by_group(group_id=group_id)
+            
+            # Step 2: Enrich with contract details from local database
+            tasks_with_request = []
+            
+            for task in flowable_tasks:
+                request_id = task['variables'].get('request_id')
+                
+                if not request_id:
+                    continue
+                
+                try:
+                    # Get contract from database
+                    service_request = ServiceRequest.objects.get(id=request_id)
+                    
+                    task_data = {
+                        'task_id': task['task_id'],
+                        'task_name': task['task_name'],
+                        'created_time': task['created_time'],
+                        'service_request': {
+                            'id': service_request.id,
+                            'external_id': service_request.external_id,
+                            'title': service_request.title,
+                            'role_name': service_request.role_name,
+                            'technology': service_request.technology,
+                            'specialization': service_request.specialization,
+                            'experience_level': service_request.experience_level,
+                            'start_date': service_request.start_date,
+                            'end_date': service_request.end_date,
+                            'expected_man_days': service_request.expected_man_days,
+                            'criteria_json': service_request.criteria_json,
+                            'task_description': service_request.task_description,
+                            'offer_deadline': service_request.offer_deadline,
+                            'word_mode': service_request.word_mode,
+                        }
+                    }
+                    
+                    tasks_with_request.append(task_data)
+                    
+                except Contract.DoesNotExist:
+                    continue
+                        
+            return Response({
+                'count': len(tasks_with_request),
+                'tasks': tasks_with_request
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to retrieve tasks: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    @action(detail=False, methods=['post'], url_path='tasks/(?P<task_id>[^/.]+)/submit-offer')
+    def submit_offer_task(self, request, task_id=None):
+        """
+        Submit offer for a service request task
+        
+        Request Body:
+        {
+            "request_id": '',
+            "provider_id": '',
+            "specialist_id": '', 
+            "daily_rate": 650.00,
+            "travel_cost": 10.00,
+            "total_cost": 670.00
+            "notes": ''
+        }
+        
+        Steps:
+        1. Validate input data
+        2. Validate task exists in Flowable
+        3. Get request_id from task variables
+        4. Create ServiceOffer record
+        5. Complete Flowable task with action="submit_offer"
+        """
+        # Step 1: Validate input data
+        serializer = ServiceOfferCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        validated_data = serializer.validated_data
+        request_id = validated_data.get('request_id')
+        provider_id = validated_data.get('provider_id')
+        specialist_id = validated_data.get('specialist_id')
+        
+        try:
+            if not request_id:
+                return Response(
+                    {'error': 'Service request id is missing'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not provider_id:
+                return Response(
+                    {'error': 'Provider id is missing'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not specialist_id:
+                return Response(
+                    {'error': 'Specialist id is missing'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            
+            # Step 2: Get service request from database
+            try:
+                service_request = ServiceRequest.objects.get(id=request_id)
+            except ServiceRequest.DoesNotExist:
+                return Response(
+                    {'error': 'Service Request not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            if service_request.status != "OPEN":
+                return Response(
+                    {'error': 'Service offer is possible only for open service request'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+             
+            # Step 3: Get provider from database
+            try:
+                provider = Provider.objects.get(id=pro)
+            except Provider.DoesNotExist:
+                return Response(
+                    {'error': 'Provider not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            
+            # Step 4: Get Specialist from database
+            try:
+                specialist = Specialist.objects.get(id=pro)
+            except Specialist.DoesNotExist:
+                return Response(
+                    {'error': 'Specialist not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            offer = ServiceOffer.objects.create(
+                request=service_request,
+                provider=provider,
+                proposed_specialist=specialist,
+                daily_rate=validated_data['daily_rate'],
+                travel_cost=validated_data['travel_cost'],
+                total_cost=validated_data['total_cost'],
+                notes=validated_data['notes'],
+            )
+            
+            # Step 5: Complete Flowable task
+            try:
+                complete_task(
+                    task_id=task_id,
+                    action='submit_offer',
+                    variables={
+                        'offer_id': str(offer.id),
+                    }
+                )
+            except Exception as e:
+                raise Exception(f"Failed to complete task: {str(e)}")
+            
+            # Step 6: Return success response
+            return Response({
+                'message': 'Counter offer submitted successfully',
+                'offer_id': str(offer.id),
+                'daily_rate': str(validated_data['daily_rate']),
+                'travel_cost': str(validated_data['travel_cost']),
+                'total_cost': str(validated_data['total_cost']),
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to submit counter offer: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

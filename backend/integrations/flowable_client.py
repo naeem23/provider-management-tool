@@ -6,18 +6,15 @@ FLOWABLE_BASE_URL = "http://flowable-rest:8080/flowable-rest"
 FLOWABLE_AUTH = ("rest-admin", "test")
 
 
-def start_service_request_bidding_process(*, service_request_id):
-    """
-    Starts the Service Request Bidding BPMN process in Flowable.
-    """
+def generate_request_task(*, request_id):
     url = f"{FLOWABLE_BASE_URL}/service/runtime/process-instances"
 
     payload = {
-        "processDefinitionKey": "serviceRequestBidding",
+        "processDefinitionKey": "serviceRequestProcess",
         "variables": [
             {
-                "name": "serviceRequestId",
-                "value": str(service_request_id),
+                "name": "request_id",
+                "value": request_id,
                 "type": "string",
             },
             {
@@ -36,6 +33,7 @@ def start_service_request_bidding_process(*, service_request_id):
     )
 
     response.raise_for_status()
+    result = response.json()
     return response.json()
 
 
@@ -70,7 +68,6 @@ def start_contract_negotiation(*, contract_data):
 
     response.raise_for_status()
     result = response.json()
-    print(f"Process started successfully: {result.get('id')}")
     return response.json()
 
 
@@ -146,7 +143,6 @@ def get_task_variable(*, task_id):
         # Extract process variables
         if variables and len(variables) > 0:
             for var in variables:
-                print("variables name ======= ", var.get('name'), " =====value===== ", var.get('value'))
                 task_info['variables'][var.get('name')] = var.get('value')
         
         return task_info
@@ -155,7 +151,7 @@ def get_task_variable(*, task_id):
         raise Exception(f"Flowable get task failed: {str(e)}")
 
 
-def complete_contract_task(*, task_id, action, variables = None):
+def complete_task(*, task_id, action, variables = None):
     """
     Complete a task with action and optional variables
     """
@@ -166,8 +162,18 @@ def complete_contract_task(*, task_id, action, variables = None):
         {"name": "action", "value": action}
     ]
         
-    # Add counter offer variables if provided
+    # Add counter offer/submit offer variables if provided
     if variables:
+        if variables.get('contract_id'):
+            task_variables.append({
+                "name": "contract_id",
+                "value": variables.get('contract_id')
+            })
+        if variables.get('version_id'):
+            task_variables.append({
+                "name": "version_id",
+                "value": variables.get('version_id')
+            })
         if variables.get('counter_rate'):
             task_variables.append({
                 "name": "counter_rate",
@@ -182,6 +188,13 @@ def complete_contract_task(*, task_id, action, variables = None):
             task_variables.append({
                 "name": "counter_terms",
                 "value": variables.get('counter_terms')
+            })
+
+        
+        if variables.get('offer_id'):
+            task_variables.append({
+                "name": "offer_id",
+                "value": variables.get('offer_id')
             })
         
     payload = {

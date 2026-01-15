@@ -1,6 +1,6 @@
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db.models import Q, Count
@@ -11,13 +11,13 @@ from django.shortcuts import get_object_or_404
 from .models import Contract, ContractVersion, ContractStatus
 from .serializers import *
 from .permissions import IsContractCoordinator
-from audit_log.utils import log_audit_event
+from audit_log.utils import log_audit_event, serialize_for_json
 from audit_log.models import AuditAction
 from integrations.flowable_client import *
 from integrations.third_party_service import third_party_service
 from service_requests.permissions import IsAuthenticatedOrFlowable
 from providers.models import Provider
-from audit_log.utils import serialize_for_json
+from notifications.services import notify_roles, notify_user
 
 
 class ContractViewSet(
@@ -27,7 +27,7 @@ class ContractViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = Contract.objects.select_related("provider")
-    permission_classes = [IsAuthenticatedOrFlowable, IsContractCoordinator]
+    permission_classes = [IsAuthenticated, IsContractCoordinator]
 
     def get_queryset(self):
         user = self.request.user
@@ -71,26 +71,71 @@ class ContractViewSet(
             return ContractCreateSerializer
         return ContractReadSerializer
 
-    # @action(detail=True, methods=["get"], url_path="start-negotiation")
-    # def start_negotiation(self, request, pk=None):
-    #     contract = self.get_object()
+    def get_permissions(self):
+        if self.action in ["create", "list", "update_status"]:
+            return [AllowAny(),]
+        return super().get_permissions()
 
-    #     if contract.status != ContractStatus.PENDING:
-    #         return Response(
-    #             {"detail": "Only draft contracts can enter negotiation."},
-    #             status=status.HTTP_400_BAD_REQUEST,
-    #         )
+    def perform_create(self, serializer):
+        contract = serializer.save()
 
-    #     contract.status = ContractStatus.IN_NEGOTIATION
-    #     contract.save(update_fields=["status"])
+        # Broadcast notification
+        notify_roles(
+            role="CONTRACT_COORDINATOR",
+            title="New Contract Created",
+            message="A new contract has been created.",
+            entity_type="Contract",
+            entity_id=contract.id,
+        )
         
-    #     # AUDIT LOG
-    #     log_audit_event(AuditAction.STATUS_CHANGE, contract)
+    
+    @action(detail=False, methods=["post"], url_path="update-status")
+    def update_status(self, request):
+        contract_id = request.data.get("contract_id")
+        contract_status = request.data.get("status")
 
-    #     # Start BPMN
-    #     start_contract_negotiation(contract_id=contract.id)
+        if not contract_id or not contract_status:
+            return Response(
+                {"detail": "contract_id and status are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-    #     return Response({"status": "IN_NEGOTIATION"})
+        if contract_status not in ["ACTIVE", "REJECTED"]:
+            return Response(
+                {"detail": "Valid status are ACTIVE/REJECTED."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Fetch contract
+        contract = get_object_or_404(
+            Contract,
+            external_id=contract_id
+        )
+
+        contract.status = contract_status
+        contract.save(update_fields=["status"])
+        
+        # AUDIT LOG
+        log_audit_event(AuditAction.STATUS_CHANGE, contract)
+
+        # Notification
+        notify_roles(
+            role="CONTRACT_COORDINATOR",
+            title="Contract Status Updated",
+            message=f"Contract status changed to {contract.status}.",
+            entity_type="Contract",
+            entity_id=contract.id,
+        )
+        
+        return Response(
+            {
+                "message": "Contract status updated successfully.",
+                "contract_id": str(contract.external_id),
+                "status": contract.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
     @action(detail=False, methods=["post"], url_path="start-negotiation")
     def start_negotiation(self, request):
@@ -102,7 +147,6 @@ class ContractViewSet(
         2. Create/Update contract in local database with status "In Negotiation"
         3. Update contract status in 3rd party API
         4. Create Flowable task for contract_coordinator group
-        5. Save task reference in NegotiationTask table
         """
     
         # Step 1: Validate input data
@@ -333,6 +377,7 @@ class ContractViewSet(
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
     @action(detail=False, methods=['post'], url_path='tasks/(?P<task_id>[^/.]+)/reject')
     def reject_task(self, request, task_id=None):
         """
@@ -488,10 +533,12 @@ class ContractViewSet(
             
             # Step 6: Complete Flowable task
             try:
-                complete_contract_task(
+                complete_task(
                     task_id=task_id,
                     action='counter_offer',
                     variables={
+                        'contract_id': str(contract.id),
+                        'version_id': str(contract_version.id),
                         'counter_rate': float(validated_data['counter_rate']),
                         'counter_explanation': validated_data['counter_explanation'],
                         'counter_terms': validated_data['counter_terms']

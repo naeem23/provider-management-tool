@@ -34,7 +34,6 @@ class ServiceOfferReadSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            "status",
             "created_at",
             "updated_at",
         ]
@@ -52,35 +51,5 @@ class ServiceOfferCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ServiceOffer
-        fields = [
-            "request",
-            "proposed_specialist",
-            "daily_rate",
-            "travel_cost",
-            "total_cost",
-            "notes",
-        ]
-
-    def validate(self, data):
-        request = data["request"]
-
-        if request.status != RequestStatus.OPEN:
-            raise serializers.ValidationError("Offers can only be created for OPEN requests.")
-
-        return data
-
-
-class ServiceOfferUpdateSerializer(serializers.ModelSerializer):
-    """
-    Draft offers can be edited before submission.
-    """
-
-    class Meta:
-        model = ServiceOffer
-        fields = [
-            "proposed_specialist",
-            "daily_rate",
-            "travel_cost",
-            "total_cost",
-            "notes",
-        ]
+        fields = "__all__"
+        read_only_fields = ['id', 'created_at', 'updated_at']
