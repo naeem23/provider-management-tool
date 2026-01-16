@@ -32,7 +32,7 @@ class NotificationViewSet(
 
         return Response({"status": "Notification marked as read"}, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["post"])
+    @action(detail=False, methods=["post"], url_path="mark-all-read")
     def mark_all_read(self, request):
         self.get_queryset().filter(is_read=False).update(is_read=True)
         return Response({"status": "All notifications marked as read"}, status=status.HTTP_200_OK)

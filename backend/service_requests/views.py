@@ -6,7 +6,8 @@ from rest_framework.response import Response
 
 from .models import ServiceRequest, RequestStatus, ServiceOffer
 from .serializers import ServiceRequestSerializer
-from .permissions import CanManageServiceRequest, CanEditServiceRequest
+from .offer_serializers import ServiceOfferCreateSerializer
+from .permissions import IsSupplierRep
 from audit_log.utils import log_audit_event
 from audit_log.models import AuditAction
 from integrations.flowable_client import *
@@ -27,7 +28,6 @@ class ServiceRequestViewSet(
     """
 
     queryset = ServiceRequest.objects.all()
-    permission_classes = [IsAuthenticated]
     serializer_class = ServiceRequestSerializer
 
     def get_queryset(self):
@@ -44,11 +44,13 @@ class ServiceRequestViewSet(
         return qs
 
     def get_permissions(self):
-        if self.action == "create":
+        if self.action == "generate":
             return [AllowAny(),]
-        if self.action in ["update", "partial_update"]:
-            return [IsAuthenticated(), CanManageServiceRequest(), CanEditServiceRequest()]
-        return super().get_permissions()
+        elif self.action in ["create", "update", "partial_update"]:
+            return [IsAuthenticated(), IsSupplierRep()]
+        elif self.action in ["list", "retrieve"]:
+            return [AllowAny()]
+        return [AllowAny()]
 
 
     @action(detail=False, methods=["post"])
@@ -72,10 +74,10 @@ class ServiceRequestViewSet(
             )
         
         validated_data = serializer.validated_data
-        external_id = validated_data.get('id')
-        status = validated_data.get('status')
+        external_id = validated_data.get('external_id')
+        request_status = validated_data.get('status')
 
-        if status.lower() != 'open':
+        if request_status.lower() != 'open':
             return Response(
                 {"details": "Only Open Service Requests are accepted"},
                 status=status.HTTP_400_BAD_REQUEST
@@ -219,9 +221,9 @@ class ServiceRequestViewSet(
         
         Request Body:
         {
-            "request_id": '',
-            "provider_id": '',
-            "specialist_id": '', 
+            "request": '',
+            "provider": '',
+            "proposed_specialist": '', 
             "daily_rate": 650.00,
             "travel_cost": 10.00,
             "total_cost": 670.00
@@ -244,62 +246,33 @@ class ServiceRequestViewSet(
             )
         
         validated_data = serializer.validated_data
-        request_id = validated_data.get('request_id')
-        provider_id = validated_data.get('provider_id')
-        specialist_id = validated_data.get('specialist_id')
+        service_request = validated_data.get('request')
+        provider = validated_data.get('provider')
+        specialist = validated_data.get('proposed_specialist')
         
         try:
-            if not request_id:
+            if not service_request:
                 return Response(
                     {'error': 'Service request id is missing'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if not provider_id:
+            if not provider:
                 return Response(
                     {'error': 'Provider id is missing'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if not specialist_id:
+            if not specialist:
                 return Response(
                     {'error': 'Specialist id is missing'},
                     status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            
-            # Step 2: Get service request from database
-            try:
-                service_request = ServiceRequest.objects.get(id=request_id)
-            except ServiceRequest.DoesNotExist:
-                return Response(
-                    {'error': 'Service Request not found'},
-                    status=status.HTTP_404_NOT_FOUND
                 )
 
             if service_request.status != "OPEN":
                 return Response(
                     {'error': 'Service offer is possible only for open service request'},
                     status=status.HTTP_400_BAD_REQUEST
-                )
-             
-            # Step 3: Get provider from database
-            try:
-                provider = Provider.objects.get(id=pro)
-            except Provider.DoesNotExist:
-                return Response(
-                    {'error': 'Provider not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            
-            # Step 4: Get Specialist from database
-            try:
-                specialist = Specialist.objects.get(id=pro)
-            except Specialist.DoesNotExist:
-                return Response(
-                    {'error': 'Specialist not found'},
-                    status=status.HTTP_404_NOT_FOUND
                 )
 
             offer = ServiceOffer.objects.create(
@@ -311,6 +284,15 @@ class ServiceRequestViewSet(
                 total_cost=validated_data['total_cost'],
                 notes=validated_data['notes'],
             )
+
+            # TODO: Step 3: Submit offer to third party
+            # try:
+            #     third_party_service.update_contract_status(
+            #         external_id=external_id,
+            #         status='In Negotiation'
+            #     )
+            # except Exception as e:
+            #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
             
             # Step 5: Complete Flowable task
             try:

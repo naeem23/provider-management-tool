@@ -48,7 +48,7 @@
     "serviceRequests": [
         {
             "id": "8987134e-20d2-4601-8f37-1196da3d4d29",
-            "external_request_id": "EXT-REQ-12345",
+            "external_id": "EXT-REQ-12345",
             "status": "AWARDED", // choices are: IMPORTED, OPEN, CLOSED, AWARDED, CANCELLED
             "domain": "Healthcare",
             "role_name": "Software Engineer",

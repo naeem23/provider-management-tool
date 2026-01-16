@@ -15,9 +15,8 @@ from audit_log.utils import log_audit_event, serialize_for_json
 from audit_log.models import AuditAction
 from integrations.flowable_client import *
 from integrations.third_party_service import third_party_service
-from service_requests.permissions import IsAuthenticatedOrFlowable
 from providers.models import Provider
-from notifications.services import notify_roles, notify_user
+from notifications.services import notify_roles
 
 
 class ContractViewSet(

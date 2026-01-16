@@ -4,7 +4,7 @@ from .models import Contract, ContractVersion
 
 
 class ContractReadSerializer(serializers.ModelSerializer):
-    service_request_code = serializers.CharField(source="service_request.external_request_id", read_only=True)
+    service_request_code = serializers.CharField(source="service_request.external_id", read_only=True)
     role_name = serializers.CharField(source="service_request.role_name", read_only=True)
     specialist_name = serializers.SerializerMethodField()
     providers_expected_rate = serializers.SerializerMethodField()

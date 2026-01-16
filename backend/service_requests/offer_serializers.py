@@ -4,7 +4,7 @@ from .models import RequestStatus, ServiceOffer, OfferStatus, ServiceRequest
 
 class ServiceOfferReadSerializer(serializers.ModelSerializer):
     service_request_id = serializers.UUIDField(source="request.id", read_only=True)
-    service_request_code = serializers.CharField(source="request.external_request_id", read_only=True)
+    service_request_code = serializers.CharField(source="request.external_id", read_only=True)
     role_name = serializers.CharField(source="request.role_name", read_only=True)
     provider_id = serializers.UUIDField(source="provider.id", read_only=True)
     provider_code = serializers.CharField(source="provider.provider_code", read_only=True)

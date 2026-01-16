@@ -14,7 +14,7 @@ class RequestStatus(models.TextChoices):
 class ServiceRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    external_request_id = models.CharField(max_length=128, blank=True) # imported from 3rd party
+    external_id = models.CharField(max_length=128, blank=True) # imported from 3rd party
 
     title               = models.CharField(max_length=128)
     role_name           = models.CharField(max_length=128) # requested role

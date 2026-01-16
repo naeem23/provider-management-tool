@@ -6,7 +6,7 @@ from .models import ServiceRequest, ServiceOffer
 class ServiceRequestAdmin(admin.ModelAdmin):
     list_display = ['id', 'status', 'role_name']
     list_filter = ['status', 'experience_level', 'created_at']
-    search_fields = ['external_request_id', 'role_name', 'technology']
+    search_fields = ['external_id', 'role_name', 'technology']
     ordering = ['-created_at']
 
 
