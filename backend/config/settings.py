@@ -18,9 +18,6 @@ DEBUG = os.getenv("DJANGO_DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
-# Add CSRF_TRUSTED_ORIGINS
-CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000').split(',')
-
 # Application definition
 
 INSTALLED_APPS = [
@@ -158,4 +155,8 @@ FLOWABLE_AUTH = (
 
 DJANGO_BASE_URL = os.environ.get('DJANGO_BASE_URL', 'http://django:8000')
 
-CORS_ALLOW_ALL_ORIGINS = True
+
+# Add CSRF_TRUSTED_ORIGINS
+CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000').split(',')
+CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+CORS_ALLOW_CREDENTIALS = True
