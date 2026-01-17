@@ -39,16 +39,16 @@ services:
       FLOWABLE_DATABASE_SCHEMA_UPDATE: true
       FLOWABLE_DJANGO_BASE_URL: http://django:8000
 
-  flowable-ui:
-    image: flowable/flowable-ui:6.8.0
-    container_name: flowable-ui
-    depends_on:
-      - flowable-rest
-    ports:
-      - "8090:8080"
-    environment:
-      FLOWABLE_REST_APP_HOST: flowable-rest
-      FLOWABLE_REST_APP_PORT: 8080
+  # flowable-ui:
+  #   image: flowable/flowable-ui:6.8.0
+  #   container_name: flowable-ui
+  #   depends_on:
+  #     - flowable-rest
+  #   ports:
+  #     - "8090:8080"
+  #   environment:
+  #     FLOWABLE_REST_APP_HOST: flowable-rest
+  #     FLOWABLE_REST_APP_PORT: 8080
 
 volumes:
   flowable-db-data:
