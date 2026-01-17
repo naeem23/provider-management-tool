@@ -111,9 +111,9 @@ class UserViewSet(
             user=self.request.user,
             action_type='USER_DELETED',
             action_category='USER_MANAGEMENT',
-            description=f'Username: {user.username} deleted',
+            description=f'Username: {instance.username} deleted',
             entity_type='User',
-            entity_id=user.id,
+            entity_id=instance.id,
             metadata={},
         )
         instance.delete()

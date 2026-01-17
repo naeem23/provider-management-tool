@@ -2,12 +2,8 @@ import requests
 from django.conf import settings
 
 
-FLOWABLE_BASE_URL = "http://flowable-rest:8080/flowable-rest"
-FLOWABLE_AUTH = ("rest-admin", "test")
-
-
 def generate_request_task(*, request_id):
-    url = f"{FLOWABLE_BASE_URL}/service/runtime/process-instances"
+    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/process-instances"
 
     payload = {
         "processDefinitionKey": "serviceRequestProcess",
@@ -19,7 +15,7 @@ def generate_request_task(*, request_id):
             },
             {
                 "name": "baseApiUrl",
-                "value": "http://django:8000",
+                "value": settings.DJANGO_BASE_URL,
                 "type": "string",
             },
         ],
@@ -27,7 +23,7 @@ def generate_request_task(*, request_id):
 
     response = requests.post(
         url,
-        auth=FLOWABLE_AUTH,
+        auth=settings.FLOWABLE_AUTH,
         json=payload,
         timeout=10,
     )
@@ -38,7 +34,7 @@ def generate_request_task(*, request_id):
 
 
 def start_contract_negotiation(*, contract_data):
-    url = f"{FLOWABLE_BASE_URL}/service/runtime/process-instances"
+    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/process-instances"
 
     variables = [
         {"name": "contract_id", "value": contract_data.get('contract_id')},
@@ -55,13 +51,13 @@ def start_contract_negotiation(*, contract_data):
         "processDefinitionKey": "contractNegotiationProcess",
         "variables": [
             *variables,
-            {"name": "baseApiUrl", "value": "http://django:8000", "type": "string"},
+            {"name": "baseApiUrl", "value": settings.DJANGO_BASE_URL, "type": "string"},
         ]
     }
 
     response = requests.post(
         url,
-        auth=FLOWABLE_AUTH,
+        auth=settings.FLOWABLE_AUTH,
         json=payload,
         timeout=10,
     )
@@ -75,7 +71,7 @@ def get_tasks_by_group(*, group_id):
     """
     Get all active tasks for a specific group
     """
-    url = f"{FLOWABLE_BASE_URL}/service/runtime/tasks"
+    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/tasks"
     
     params = {
         'candidateGroup': group_id,
@@ -86,7 +82,7 @@ def get_tasks_by_group(*, group_id):
         response = requests.get(
             url,
             params=params,
-            auth=FLOWABLE_AUTH,
+            auth=settings.FLOWABLE_AUTH,
             timeout=10
         )
         response.raise_for_status()
@@ -123,12 +119,12 @@ def get_task_variable(*, task_id):
     """
     Get details of a specific task
     """
-    url = f"{FLOWABLE_BASE_URL}/service/runtime/tasks/{task_id}/variables"
+    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/tasks/{task_id}/variables"
         
     try:
         response = requests.get(
             url,
-            auth=FLOWABLE_AUTH,
+            auth=settings.FLOWABLE_AUTH,
             timeout=10
         )
         response.raise_for_status()
@@ -155,7 +151,7 @@ def complete_task(*, task_id, action, variables = None):
     """
     Complete a task with action and optional variables
     """
-    url = f"{FLOWABLE_BASE_URL}/service/runtime/tasks/{task_id}"
+    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/tasks/{task_id}"
         
     # Prepare completion variables
     task_variables = [
@@ -206,7 +202,7 @@ def complete_task(*, task_id, action, variables = None):
         response = requests.post(
             url,
             json=payload,
-            auth=FLOWABLE_AUTH,
+            auth=settings.FLOWABLE_AUTH,
             timeout=10
         )
         response.raise_for_status()

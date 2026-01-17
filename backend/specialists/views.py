@@ -89,9 +89,9 @@ class SpecialistViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action_type='SPECIALIST_DELETED',
             action_category='SPECIALIST_MANAGEMENT',
-            description=f'Specialist with ID {specialist.id} deleted',
+            description=f'Specialist with ID {instance.id} deleted',
             entity_type='Specialists',
-            entity_id=specialist.id,
+            entity_id=instance.id,
             metadata={},
         )
         instance.delete()
