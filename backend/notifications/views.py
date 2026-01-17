@@ -17,7 +17,7 @@ class NotificationViewSet(
     permission_classes = [IsAuthenticated,]
 
     def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
+        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
 
     @action(detail=False, methods=["get"], url_path="unread-count")
     def unread_count(self, request):

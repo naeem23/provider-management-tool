@@ -8,8 +8,7 @@ from .models import ServiceRequest, RequestStatus, ServiceOffer
 from .serializers import ServiceRequestSerializer
 from .offer_serializers import ServiceOfferCreateSerializer
 from .permissions import IsSupplierRep
-from audit_log.utils import log_audit_event
-from audit_log.models import AuditAction
+from audit_log.models import AuditLog
 from integrations.flowable_client import *
 from notifications.services import notify_roles
 from providers.models import Provider
@@ -135,6 +134,20 @@ class ServiceRequestViewSet(
                 message="A new service request has been created.",
                 entity_type="ServiceRequest",
                 entity_id=service_request.id,
+            )
+
+            AuditLog.log_action(
+                user=request.user,
+                action_type='REQUEST_GENERATED',
+                action_category='OFFER_MANAGEMENT',
+                description=f'Service request generated with ID {service_request.id}',
+                entity_type='ServiceRequest',
+                entity_id=service_request.id,
+                metadata={
+                    'title': service_request.title,
+                    'status': service_request.status,
+                },
+                request=request
             )
 
             # Step 5: Return success response
@@ -305,6 +318,22 @@ class ServiceRequestViewSet(
                 )
             except Exception as e:
                 raise Exception(f"Failed to complete task: {str(e)}")
+
+            AuditLog.log_action(
+                user=request.user,
+                action_type='OFFER_SUBMITTED',
+                action_category='OFFER_MANAGEMENT',
+                description=f'Offer submitted for request ID {service_request.id}',
+                entity_type='ServiceOffer',
+                entity_id=offer.id,
+                metadata={
+                    'offer_id': offer.id,
+                    'status': offer.status,
+                    'specialist': offer.proposed_specialist,
+                    'daily_rate': offer.daily_rate,
+                },
+                request=request
+            )
             
             # Step 6: Return success response
             return Response({

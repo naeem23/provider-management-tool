@@ -18,8 +18,7 @@ from .permissions import (
     CanViewOffer,
     CanDecideOffer,
 )
-from audit_log.utils import log_audit_event
-from audit_log.models import AuditAction
+from audit_log.models import AuditLog
 from specialists.models import Specialist
 from accounts.models import User, UserRole
 from notifications.services import notify_roles
@@ -41,11 +40,11 @@ class ServiceOfferViewSet(
         user = self.request.user
 
         if user.is_staff or user.is_superuser or getattr(self.request, "is_flowable", False):
-            return self.queryset
+            return self.queryset.order_by("-created_at")
 
         # Supplier sees only own provider offers
         if user.provider_id:
-            return self.queryset.filter(provider_id=user.provider_id)
+            return self.queryset.filter(provider_id=user.provider_id).order_by("-created_at")
 
         return self.queryset.none()
 
@@ -81,7 +80,21 @@ class ServiceOfferViewSet(
         offer.save(update_fields=["status"])
         
         # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, offer)
+        AuditLog.log_action(
+            user=request.user,
+            action_type='OFFER_WITHDRAWN',
+            action_category='OFFER_MANAGEMENT',
+            description=f'Offer withdrawn for ID {service_request.id}',
+            entity_type='ServiceOffer',
+            entity_id=offer.id,
+            metadata={
+                'offer_id': offer.id,
+                'status': offer.status,
+                'specialist': offer.proposed_specialist,
+                'daily_rate': offer.daily_rate,
+            },
+            request=request
+        )
 
         # Notification withdrawn 
         notify_roles(
@@ -125,7 +138,23 @@ class ServiceOfferViewSet(
         offer.save(update_fields=["status"])
         
         # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, offer)
+        
+        AuditLog.log_action(
+            user=request.user,
+            action_type='OFFER_UPDATED',
+            action_category='OFFER_MANAGEMENT',
+            description=f'Offer status changed to {offer.status}',
+            entity_type='ServiceOffer',
+            entity_id=offer.id,
+            metadata={
+                'offer_id': offer.id,
+                'previous_status': offer_status,
+                'current_status': offer.status,
+                'specialist': offer.proposed_specialist,
+                'daily_rate': offer.daily_rate,
+            },
+            request=request
+        )
 
         # Notification
         notify_roles(

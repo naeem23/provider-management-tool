@@ -11,8 +11,8 @@ from django.shortcuts import get_object_or_404
 from .models import Contract, ContractVersion, ContractStatus
 from .serializers import *
 from .permissions import IsContractCoordinator
-from audit_log.utils import log_audit_event, serialize_for_json
-from audit_log.models import AuditAction
+from audit_log.utils import serialize_for_json
+from audit_log.models import AuditLog
 from integrations.flowable_client import *
 from integrations.third_party_service import third_party_service
 from providers.models import Provider
@@ -63,7 +63,7 @@ class ContractViewSet(
         elif search == "published-only":
             queryset = queryset.exclude(status__in=excluded_statuses)
 
-        return queryset
+        return queryset.order_by("-created_at")
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -113,9 +113,6 @@ class ContractViewSet(
 
         contract.status = contract_status
         contract.save(update_fields=["status"])
-        
-        # AUDIT LOG
-        log_audit_event(AuditAction.STATUS_CHANGE, contract)
 
         # Notification
         notify_roles(
@@ -124,6 +121,21 @@ class ContractViewSet(
             message=f"Contract status changed to {contract.status}.",
             entity_type="Contract",
             entity_id=contract.id,
+        )
+        
+        AuditLog.log_action(
+            user=request.user,
+            action_type='CONTRACT_UPDATED',
+            action_category='CONTRACT_MANAGEMENT',
+            description=f'Status updated for contract {contract.id}',
+            entity_type='Contract',
+            entity_id=contract.id,
+            metadata={
+                'contract_title': contract.title,
+                'previous_status': contract_status,
+                'current_status': contract.status,
+            },
+            request=request
         )
         
         return Response(
@@ -227,6 +239,20 @@ class ContractViewSet(
                 
             except Exception as e:
                 raise Exception(f"Failed to create Flowable task: {str(e)}")
+
+            AuditLog.log_action(
+                user=request.user,
+                action_type='CONTRACT_NEGOTIATION_STARTED',
+                action_category='CONTRACT_MANAGEMENT',
+                description=f'Negotiation started for contract {contract.id}',
+                entity_type='Contract',
+                entity_id=contract.id,
+                metadata={
+                    'contract_title': contract.title,
+                    'status': contract.status
+                },
+                request=request
+            )
 
             # Step 5: Return success response
             return Response({
@@ -362,6 +388,19 @@ class ContractViewSet(
             #     )
             # except Exception as e:
             #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
+
+            AuditLog.log_action(
+                user=request.user,
+                action_type='CONTRACT_ACCEPTED',
+                action_category='CONTRACT_MANAGEMENT',
+                description=f'Accepted contract {contract.id}',
+                entity_type='Contract',
+                entity_id=contract.id,
+                metadata={
+                    'contract_title': contract.title,
+                },
+                request=request
+            )
             
             # Step 5: Return success response
             return Response({
@@ -436,6 +475,19 @@ class ContractViewSet(
             #     )
             # except Exception as e:
             #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
+
+            AuditLog.log_action(
+                user=request.user,
+                action_type='CONTRACT_REJECTED',
+                action_category='CONTRACT_MANAGEMENT',
+                description=f'Rejected contract {contract.id}',
+                entity_type='Contract',
+                entity_id=contract.id,
+                metadata={
+                    'contract_title': contract.title,
+                },
+                request=request
+            )
             
             # Step 5: Return success response
             return Response({
@@ -556,6 +608,21 @@ class ContractViewSet(
             # except Exception as e:
             #     logger.error(f"3rd party API update failed: {str(e)}")
             #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
+
+            AuditLog.log_action(
+                user=request.user,
+                action_type='CONTRACT_COUNTER_OFFER',
+                action_category='CONTRACT_MANAGEMENT',
+                description=f'Counter offer submitted for contract {contract.id}',
+                entity_type='Contract',
+                entity_id=contract.id,
+                metadata={
+                    'contract_title': contract.title,
+                    'contract_version_id': contract_version.id,
+                    'counter_rate': contract_version.counter_rate,
+                },
+                request=request
+            )
             
             # Step 8: Return success response
             return Response({
@@ -618,28 +685,3 @@ class ContractVersionViewSet(viewsets.ModelViewSet):
         return ContractVersion.objects.filter(
             contract_id=self.kwargs["contract_pk"]
         ).order_by("-version_number")
-
-    def perform_create(self, serializer):
-        contract = get_object_or_404(
-            Contract,
-            id=self.kwargs["contract_pk"]
-        )
-
-        with transaction.atomic():
-            last_version = (
-                ContractVersion.objects
-                .filter(contract=contract)
-                .order_by("-version_number")
-                .first()
-            )
-
-            next_version = (
-                last_version.version_number + 1
-                if last_version
-                else 1
-            )
-
-            serializer.save(
-                contract=contract,
-                version_number=next_version
-            )

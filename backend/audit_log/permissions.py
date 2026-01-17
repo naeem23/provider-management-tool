@@ -6,6 +6,5 @@ class CanViewAuditLogs(BasePermission):
     def has_permission(self, request, view):
         return request.user.role in [
             UserRole.PROVIDER_ADMIN,
-            UserRole.CONTRACT_COORDINATOR,
             UserRole.INTERNAL_PM,
         ]

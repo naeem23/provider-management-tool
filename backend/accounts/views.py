@@ -13,6 +13,7 @@ from .serializers import (
 )
 from .permissions import IsProviderAdmin, IsProviderAdminOrOwner
 from .models import UserRole
+from audit_log.models import AuditLog
 
 User = get_user_model()
 
@@ -67,6 +68,56 @@ class UserViewSet(
             return [IsAuthenticated(), IsProviderAdminOrOwner()]
         return super().get_permissions()
 
+    def perform_create(self, serializer):
+        user = serializer.save()
+        AuditLog.log_action(
+            user=self.request.user,
+            action_type='USER_CREATED',
+            action_category='USER_MANAGEMENT',
+            description=f'Create a new user with username: {user.username}',
+            entity_type='User',
+            entity_id=user.id,
+            metadata={},
+        )
+    
+    def perform_update(self, serializer):
+        old_user = self.get_object()
+        user = serializer.save()
+        AuditLog.log_action(
+            user=self.request.user,
+            action_type='USER_UPDATED',
+            action_category='USER_MANAGEMENT',
+            description=f'User info updated for username: {user.username}',
+            entity_type='User',
+            entity_id=user.id,
+            metadata={
+                'old_data': {
+                    'username': old_user.username,
+                    'first_name': old_user.first_name,
+                    'last_name': old_user.last_name,
+                    'role': old_user.role,
+                },
+                'new_data':  {
+                    'username': old_user.username,
+                    'first_name': old_user.first_name,
+                    'last_name': old_user.last_name,
+                    'role': old_user.role,
+                },
+            },
+        )
+    
+    def perform_destroy(self, instance):
+        AuditLog.log_action(
+            user=self.request.user,
+            action_type='USER_DELETED',
+            action_category='USER_MANAGEMENT',
+            description=f'Username: {user.username} deleted',
+            entity_type='User',
+            entity_id=user.id,
+            metadata={},
+        )
+        instance.delete()
+
     @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
         serializer = UserReadSerializer(request.user, context={"request": request})
@@ -83,4 +134,15 @@ class UserViewSet(
 
         user.set_password(serializer.validated_data["new_password"])
         user.save()
+
+        AuditLog.log_action(
+            user=request.user,
+            action_type='USER_UPDATED',
+            action_category='USER_MANAGEMENT',
+            description=f'Password changed for user: {new_user.username}',
+            entity_type='User',
+            entity_id=user.id,
+            metadata={},
+        )
+
         return Response({"detail": "Password updated successfully."}, status=status.HTTP_200_OK)
