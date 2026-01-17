@@ -3,7 +3,7 @@ from django.conf import settings
 
 
 def generate_request_task(*, request_id):
-    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/process-instances"
+    url = f"{settings.FLOWABLE_BASE_URL}/runtime/process-instances"
 
     payload = {
         "processDefinitionKey": "serviceRequestProcess",
@@ -34,7 +34,7 @@ def generate_request_task(*, request_id):
 
 
 def start_contract_negotiation(*, contract_data):
-    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/process-instances"
+    url = f"{settings.FLOWABLE_BASE_URL}/runtime/process-instances"
 
     variables = [
         {"name": "contract_id", "value": contract_data.get('contract_id')},
@@ -71,7 +71,7 @@ def get_tasks_by_group(*, group_id):
     """
     Get all active tasks for a specific group
     """
-    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/tasks"
+    url = f"{settings.FLOWABLE_BASE_URL}/runtime/tasks"
     
     params = {
         'candidateGroup': group_id,
@@ -119,7 +119,7 @@ def get_task_variable(*, task_id):
     """
     Get details of a specific task
     """
-    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/tasks/{task_id}/variables"
+    url = f"{settings.FLOWABLE_BASE_URL}/runtime/tasks/{task_id}/variables"
         
     try:
         response = requests.get(
@@ -151,7 +151,7 @@ def complete_task(*, task_id, action, variables = None):
     """
     Complete a task with action and optional variables
     """
-    url = f"{settings.FLOWABLE_BASE_URL}/service/runtime/tasks/{task_id}"
+    url = f"{settings.FLOWABLE_BASE_URL}/runtime/tasks/{task_id}"
         
     # Prepare completion variables
     task_variables = [
