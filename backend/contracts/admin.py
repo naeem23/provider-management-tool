@@ -4,7 +4,7 @@ from .models import Contract, ContractVersion
 
 @admin.register(Contract)
 class ContractAdmin(admin.ModelAdmin):
-    list_display = ['id', 'contract_code', 'status', 'valid_from', 'valid_to']
+    list_display = ['id', 'contract_code', 'status', 'valid_from', 'valid_till']
     list_filter = ['status',]
     search_fields = ['provider__provider_code', 'contract_code']
     ordering = ['-created_at']

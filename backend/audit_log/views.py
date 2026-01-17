@@ -1,29 +1,34 @@
-from rest_framework import viewsets
+from rest_framework import viewsets, filters
 from rest_framework.permissions import IsAuthenticated
+
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 from .permissions import CanViewAuditLogs
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AuditLog.objects.select_related("actor").order_by("-created_at")
+    queryset = AuditLog.objects.all()
     serializer_class = AuditLogSerializer
-    permission_classes = [IsAuthenticated, CanViewAuditLogs]
-
+    permission_classes = [IsAuthenticated]
+    
+    # Filterable fields
+    filterset_fields = ['action_category', 'action_type', 'user', 'result', 'user_role']
+    
+    # Searchable fields
+    search_fields = ['description', 'entity_id', 'user__username']
+    
+    # Ordering
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+    
     def get_queryset(self):
-        qs = super().get_queryset()
-
-        entity_type = self.request.query_params.get("entity_type")
-        entity_id = self.request.query_params.get("entity_id")
-        actor = self.request.query_params.get("actor")
-        action = self.request.query_params.get("action")
-
-        if entity_type:
-            qs = qs.filter(entity_type=entity_type)
-        if entity_id:
-            qs = qs.filter(entity_id=entity_id)
-        if actor:
-            qs = qs.filter(actor_id=actor)
-        if action:
-            qs = qs.filter(action=action)
-
-        return qs
+        """
+        Filter logs based on user's company
+        """
+        user = self.request.user
+        
+        # Provider Admin can see all logs for their company
+        if user.role == 'PROVIDER_ADMIN':
+            return AuditLog.objects.filter(user__provider=user.provider)
+        
+        # Other users can only see their own logs
+        return AuditLog.objects.filter(user=user)

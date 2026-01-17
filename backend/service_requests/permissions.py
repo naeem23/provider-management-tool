@@ -3,24 +3,6 @@ from accounts.models import UserRole
 from .models import RequestStatus, OfferStatus
 
 
-class CanManageServiceRequest(BasePermission):
-    """
-    Provider Admin / Internal PM can create and manage requests.
-    """
-    def has_permission(self, request, view):
-        return request.user.role in [
-            UserRole.PROVIDER_ADMIN,
-            UserRole.INTERNAL_PM,
-        ]
-
-
-class CanEditServiceRequest(BasePermission):
-    """
-    Requests can only be edited before they are OPEN.
-    """
-    def has_object_permission(self, request, view, obj):
-        return obj.status == RequestStatus.IMPORTED
-
 
 class IsSupplierRep(BasePermission):
     def has_permission(self, request, view):

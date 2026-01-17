@@ -14,19 +14,21 @@ class ContractStatus(models.TextChoices):
 
 class Contract(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    external_id = models.CharField(max_length=255, blank=True, null=True)
     provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="contracts")
     service_request = models.ForeignKey("service_requests.ServiceRequest", on_delete=models.SET_NULL, null=True, blank=True)
     winning_offer = models.ForeignKey("service_requests.ServiceOffer", on_delete=models.SET_NULL, null=True, blank=True)
 
     title             = models.CharField(max_length=255)
     contract_code     = models.CharField(max_length=32, unique=True, editable=False)
+    domain            = models.CharField(max_length=128, blank=True, null=True)
     status            = models.CharField(max_length=32, choices=ContractStatus.choices, default=ContractStatus.PENDING)
 
-    offered_daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    proposed_rate = models.DecimalField(max_digits=10, decimal_places=2)
     negotiated_rate = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     response_deadline  = models.DateField()
     valid_from        = models.DateField()
-    valid_to          = models.DateField()
+    valid_till          = models.DateField()
     terms_and_condition    = models.TextField(blank=True)
 
     created_at        = models.DateTimeField(auto_now_add=True)
@@ -56,6 +58,18 @@ class Contract(models.Model):
         random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         return f"CNT-{random_part}"
 
+    @property
+    def specialist(self):
+        if self.winning_offer and self.winning_offer.proposed_specialist:
+            return self.winning_offer.proposed_specialist.full_name
+        return None
+
+    @property
+    def providers_expected_rate(self):
+        if self.winning_offer:
+            return self.winning_offer.daily_rate
+        return None
+        
 
 class ContractVersion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

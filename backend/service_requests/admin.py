@@ -4,9 +4,9 @@ from .models import ServiceRequest, ServiceOffer
 
 @admin.register(ServiceRequest)
 class ServiceRequestAdmin(admin.ModelAdmin):
-    list_display = ['id', 'status', 'domain', 'role_name']
+    list_display = ['id', 'status', 'role_name']
     list_filter = ['status', 'experience_level', 'created_at']
-    search_fields = ['external_request_id', 'domain', 'role_name', 'technology']
+    search_fields = ['external_id', 'role_name', 'technology']
     ordering = ['-created_at']
 
 

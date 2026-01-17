@@ -14,21 +14,21 @@ class RequestStatus(models.TextChoices):
 class ServiceRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    external_request_id = models.CharField(max_length=128, blank=True) # imported from 3rd party
-    status              = models.CharField(max_length=16, choices=RequestStatus.choices, default=RequestStatus.IMPORTED)
+    external_id = models.CharField(max_length=128, blank=True) # imported from 3rd party
 
-    domain              = models.CharField(max_length=128) # business domain
+    title               = models.CharField(max_length=128)
     role_name           = models.CharField(max_length=128) # requested role
     technology          = models.CharField(max_length=128, blank=True)
-
+    specialization      = models.CharField(max_length=64, blank=True)
     experience_level    = models.CharField(max_length=16, choices=ExperienceLevel.choices, blank=True)
-    technology_level    = models.CharField(max_length=8, choices=TechnologyLevel.choices, blank=True)
-
     start_date          = models.DateField(null=True, blank=True)
     end_date            = models.DateField(null=True, blank=True)
     expected_man_days   = models.PositiveIntegerField(null=True, blank=True)
-
     criteria_json       = models.JSONField(default=dict, blank=True)
+    status              = models.CharField(max_length=16, choices=RequestStatus.choices, default=RequestStatus.OPEN)
+    task_description    = models.TextField(blank=True)
+    offer_deadline      = models.DateField(null=True, blank=True)
+    word_mode           = models.CharField(max_length=16, blank=True, default="Remote")
 
     created_at          = models.DateTimeField(auto_now_add=True)
     updated_at          = models.DateTimeField(auto_now=True)
@@ -47,8 +47,7 @@ class ServiceOffer(models.Model):
 
     request      = models.ForeignKey(ServiceRequest, on_delete=models.CASCADE, related_name="offers")
     provider     = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="offers")
-    submitted_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL)
-
+    
     status       = models.CharField(max_length=16, choices=OfferStatus.choices, default=OfferStatus.SUBMITTED)
 
     proposed_specialist = models.ForeignKey(

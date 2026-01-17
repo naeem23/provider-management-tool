@@ -4,11 +4,10 @@ from .models import Contract, ContractVersion
 
 
 class ContractReadSerializer(serializers.ModelSerializer):
-    service_request_code = serializers.CharField(source="service_request.external_request_id", read_only=True)
+    service_request_code = serializers.CharField(source="service_request.external_id", read_only=True)
     role_name = serializers.CharField(source="service_request.role_name", read_only=True)
-    service_domain = serializers.CharField(source="service_request.domain", read_only=True)
     specialist_name = serializers.SerializerMethodField()
-    expected_rate = serializers.SerializerMethodField()
+    providers_expected_rate = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
@@ -19,23 +18,22 @@ class ContractReadSerializer(serializers.ModelSerializer):
             "service_request_code",
             "title",
             "role_name",
-            "service_domain",
+            "domain",
             "provider",
             "specialist_name",
-            "offered_daily_rate",
+            "proposed_rate",
             "negotiated_rate",
-            "expected_rate",
+            "providers_expected_rate",
             "status",
             "response_deadline",
             "valid_from",
-            "valid_to",
+            "valid_till",
             "terms_and_condition",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "id",
-            "service_request_id",
             "created_at",
             "updated_at",
         ]
@@ -45,10 +43,8 @@ class ContractReadSerializer(serializers.ModelSerializer):
             return obj.winning_offer.proposed_specialist.full_name
         return None
 
-    def get_expected_rate(self, obj):
-        if obj.winning_offer:
-            return obj.winning_offer.daily_rate
-        return None
+    def get_providers_expected_rate(self, obj):
+        return str(obj.providers_expected_rate)
 
 
 class ContractCreateSerializer(serializers.ModelSerializer):
@@ -72,3 +68,55 @@ class ContractVersionSerializer(serializers.ModelSerializer):
             "version_number",
             "created_at",
         ]
+
+
+class StartNegotiationSerializer(serializers.Serializer):
+    """
+    Serializer for starting contract negotiation
+    Validates incoming data from frontend/3rd party
+    """
+    id = serializers.CharField(required=True, help_text="External contract ID from 3rd party")
+    title = serializers.CharField(required=True, max_length=255)
+    proposed_rate = serializers.DecimalField(required=True, max_digits=10, decimal_places=2)
+    valid_from = serializers.DateField(required=True)
+    valid_till = serializers.DateField(required=True)
+    response_deadline = serializers.DateField(required=True)
+    domain = serializers.CharField(required=False, allow_blank=True)
+    terms_condition = serializers.CharField(required=False, allow_blank=True)
+    provider = serializers.CharField(required=False, allow_blank=True)
+
+
+class CounterOfferSerializer(serializers.Serializer):
+    """
+    Serializer for submitting counter offer
+    """
+    counter_rate = serializers.DecimalField(
+        required=True, 
+        max_digits=10, 
+        decimal_places=2,
+        help_text="Proposed counter rate"
+    )
+    counter_explanation = serializers.CharField(
+        required=True,
+        min_length=10,
+        help_text="Explanation for the counter offer"
+    )
+    counter_terms = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Terms and conditions for counter offer"
+    )
+    
+    def validate_counter_rate(self, value):
+        """Validate counter rate is positive"""
+        if value <= 0:
+            raise serializers.ValidationError("Counter rate must be positive")
+        return value
+    
+    def validate_counter_explanation(self, value):
+        """Validate explanation is meaningful"""
+        if len(value.strip()) < 10:
+            raise serializers.ValidationError(
+                "Counter explanation must be at least 10 characters"
+            )
+        return value.strip()

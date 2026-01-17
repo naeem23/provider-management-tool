@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.flowable.org/processdef">
+
+    <process id="serviceRequestProcess" name="Service Request Process" isExecutable="true">
+
+        <startEvent id="startEvent" name="Generate Service Request"/>
+
+        <sequenceFlow sourceRef="startEvent" targetRef="reviewServiceRequestTask"/>
+
+        <!-- User Task: Review Service Request and Submit Offer -->
+        <userTask id="reviewServiceRequestTask" name="Review Service Request" flowable:candidateGroups="supplier_rep">
+            <documentation>
+                Review service request and submit offer
+            </documentation>
+        </userTask>
+
+        <sequenceFlow sourceRef="reviewServiceRequestTask" targetRef="offerSubmittedEnd"/>
+
+        <!-- End Event -->
+        <endEvent id="offerSubmittedEnd" name="Offer Submitted"/>
+
+    </process>
+
+</definitions>

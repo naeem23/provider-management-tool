@@ -1,0 +1,51 @@
+I have a notification model with fields, id, title, message, is_read, entity_type, entity_id. entity type could be other model name like ServiceRequest, ServiceOffer, Contract. when service request or contract is created a notification will also be created. on status change of service offer or contract a notification will also be created. service request and contract creation notification will be visible to all users with role "Supplier Representative" or "Contract Coordinator". only supplier representative can bid on a service request and a service offer will be created. so service offer status change notification will be visible only to specific user who created the service offer. similarly only contract coordinator can bid on a contract. so contract status change notification will be visible only to specific user who bid on the contract. for your clarification I am providing you a structure or relation between this models:
+
+class User(AbstructUser):
+
+...
+
+ role = models.CharField(....)
+
+provider = models.ForeignKey('Provider', ...)
+
+
+
+class Provider():
+
+id =
+
+name = 
+
+....
+
+
+
+class ServiceRequest():
+
+....
+
+
+
+class ServiceOffer():
+
+service_request = models.ForeignKey('ServiceRequest'....)
+
+provider = models.ForeignKey('Provider'...)
+
+status = models.CharField(...)
+
+...
+
+
+
+class Contract():
+
+provider = models.ForeignKey('Provider'....)
+
+status = models.CharField(...)
+
+....
+
+
+
+so now please modify notification model if required, create serializer, and views please. 
