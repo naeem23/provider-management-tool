@@ -123,21 +123,6 @@ class ContractViewSet(
             entity_id=contract.id,
         )
         
-        AuditLog.log_action(
-            user=request.user,
-            action_type='CONTRACT_UPDATED',
-            action_category='CONTRACT_MANAGEMENT',
-            description=f'Status updated for contract {contract.id}',
-            entity_type='Contract',
-            entity_id=contract.id,
-            metadata={
-                'contract_title': contract.title,
-                'previous_status': contract_status,
-                'current_status': contract.status,
-            },
-            request=request
-        )
-        
         return Response(
             {
                 "message": "Contract status updated successfully.",
@@ -257,7 +242,7 @@ class ContractViewSet(
             # Step 5: Return success response
             return Response({
                 'message': 'Contract and task created successfully',
-                'contract_id': contract.id,
+                'contract_id': str(contract.id),
                 'status': contract.status
             }, status=status.HTTP_201_CREATED)
 

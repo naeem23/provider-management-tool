@@ -136,30 +136,16 @@ class ServiceRequestViewSet(
                 entity_id=service_request.id,
             )
 
-            AuditLog.log_action(
-                user=request.user,
-                action_type='REQUEST_GENERATED',
-                action_category='OFFER_MANAGEMENT',
-                description=f'Service request generated with ID {service_request.id}',
-                entity_type='ServiceRequest',
-                entity_id=service_request.id,
-                metadata={
-                    'title': service_request.title,
-                    'status': service_request.status,
-                },
-                request=request
-            )
-
             # Step 5: Return success response
             return Response({
                 'message': 'Contract and task created successfully',
-                'contract_id': service_request.id,
+                'contract_id': str(service_request.id),
                 'status': service_request.status
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             return Response(
-                {'error': f'Failed to start negotiation: {str(e)}'},
+                {'error': f'Failed to generate request: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

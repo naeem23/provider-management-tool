@@ -136,25 +136,6 @@ class ServiceOfferViewSet(
 
         offer.status = offer_status
         offer.save(update_fields=["status"])
-        
-        # AUDIT LOG
-        
-        AuditLog.log_action(
-            user=request.user,
-            action_type='OFFER_UPDATED',
-            action_category='OFFER_MANAGEMENT',
-            description=f'Offer status changed to {offer.status}',
-            entity_type='ServiceOffer',
-            entity_id=offer.id,
-            metadata={
-                'offer_id': offer.id,
-                'previous_status': offer_status,
-                'current_status': offer.status,
-                'specialist': offer.proposed_specialist,
-                'daily_rate': offer.daily_rate,
-            },
-            request=request
-        )
 
         # Notification
         notify_roles(
