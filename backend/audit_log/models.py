@@ -169,6 +169,6 @@ class AuditLog(models.Model):
             result=result,
             description=description,
             entity_type=entity_type,
-            entity_id=entity_id,
+            entity_id=str(entity_id),
             metadata=metadata or {},
         )

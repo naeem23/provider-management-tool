@@ -319,12 +319,12 @@ class ServiceRequestViewSet(
                 action_category='OFFER_MANAGEMENT',
                 description=f'Offer submitted for request ID {service_request.id}',
                 entity_type='ServiceOffer',
-                entity_id=offer.id,
+                entity_id=str(offer.id),
                 metadata={
-                    'offer_id': offer.id,
+                    'offer_id': str(offer.id),
                     'status': offer.status,
-                    'specialist': offer.proposed_specialist,
-                    'daily_rate': offer.daily_rate,
+                    'specialist': offer.proposed_specialist.full_name,
+                    'daily_rate': str(offer.daily_rate),
                 },
                 request=request
             )

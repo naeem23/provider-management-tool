@@ -61,7 +61,7 @@ class ContractViewSet(
             )
 
         elif search == "published-only":
-            queryset = queryset.exclude(status__in=excluded_statuses)
+            queryset = queryset.exclude(status__in=excluded_statuses, external_id="")
 
         return queryset.order_by("-created_at")
 
@@ -229,7 +229,7 @@ class ContractViewSet(
                 user=request.user,
                 action_type='CONTRACT_NEGOTIATION_STARTED',
                 action_category='CONTRACT_MANAGEMENT',
-                description=f'Negotiation started for contract {contract.id}',
+                description=f'Negotiation started for contract {str(contract.id)}',
                 entity_type='Contract',
                 entity_id=contract.id,
                 metadata={
@@ -378,7 +378,7 @@ class ContractViewSet(
                 user=request.user,
                 action_type='CONTRACT_ACCEPTED',
                 action_category='CONTRACT_MANAGEMENT',
-                description=f'Accepted contract {contract.id}',
+                description=f'Accepted contract {str(contract.id)}',
                 entity_type='Contract',
                 entity_id=contract.id,
                 metadata={
@@ -465,7 +465,7 @@ class ContractViewSet(
                 user=request.user,
                 action_type='CONTRACT_REJECTED',
                 action_category='CONTRACT_MANAGEMENT',
-                description=f'Rejected contract {contract.id}',
+                description=f'Rejected contract {str(contract.id)}',
                 entity_type='Contract',
                 entity_id=contract.id,
                 metadata={
@@ -598,13 +598,13 @@ class ContractViewSet(
                 user=request.user,
                 action_type='CONTRACT_COUNTER_OFFER',
                 action_category='CONTRACT_MANAGEMENT',
-                description=f'Counter offer submitted for contract {contract.id}',
+                description=f'Counter offer submitted for contract {str(contract.id)}',
                 entity_type='Contract',
                 entity_id=contract.id,
                 metadata={
                     'contract_title': contract.title,
-                    'contract_version_id': contract_version.id,
-                    'counter_rate': contract_version.counter_rate,
+                    'contract_version_id': str(contract_version.id),
+                    'counter_rate': str(contract_version.counter_rate),
                 },
                 request=request
             )

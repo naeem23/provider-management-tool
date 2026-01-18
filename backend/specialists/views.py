@@ -8,6 +8,7 @@ from .models import Specialist
 from .serializers import SpecialistSerializer
 from providers.permissions import IsProviderAdmin
 from audit_log.models import AuditLog
+from audit_log.utils import serialize_for_json
 
 
 class SpecialistViewSet(viewsets.ModelViewSet):
@@ -55,7 +56,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action_type='SPECIALIST_CREATED',
             action_category='SPECIALIST_MANAGEMENT',
-            description=f'Create a new specialist: {specialist.id}',
+            description=f'Create a new specialist: {str(specialist.id)}',
             entity_type='Specialists',
             entity_id=specialist.id,
             metadata={
@@ -65,7 +66,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        old_data = self.get_object()
+        old_data = serialiserialize_for_json(self.get_object())
         specialist = serializer.save(provider=self.request.user.provider)
         AuditLog.log_action(
             user=self.request.user,
@@ -89,7 +90,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
             user=self.request.user,
             action_type='SPECIALIST_DELETED',
             action_category='SPECIALIST_MANAGEMENT',
-            description=f'Specialist with ID {instance.id} deleted',
+            description=f'Specialist with ID {str(instance.id)} deleted',
             entity_type='Specialists',
             entity_id=instance.id,
             metadata={},

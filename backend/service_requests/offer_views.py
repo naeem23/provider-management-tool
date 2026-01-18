@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.db import transaction
 from django.db.models import Q, Count
+from django.shortcuts import get_object_or_404
 
 from service_orders.models import ServiceOrder
 from .models import ServiceOffer, OfferStatus, RequestStatus
@@ -54,12 +55,12 @@ class ServiceOfferViewSet(
         return ServiceOfferReadSerializer
 
     def get_permissions(self):
+        if self.action == "update_status":
+            return [AllowAny(),]
         if self.action in ["create", "metrics"]:
             return [IsAuthenticated(), IsSupplierRep()]
         if self.action in ["update", "partial_update", "withdraw"]:
             return [IsAuthenticated(), IsSupplierRep(), CanEditDraftOffer()]
-        if self.action == "update_status":
-            return [AllowAny(),]
         return super().get_permissions()
 
 
@@ -84,14 +85,14 @@ class ServiceOfferViewSet(
             user=request.user,
             action_type='OFFER_WITHDRAWN',
             action_category='OFFER_MANAGEMENT',
-            description=f'Offer withdrawn for ID {service_request.id}',
+            description=f'Offer withdrawn for ID {str(service_request.id)}',
             entity_type='ServiceOffer',
             entity_id=offer.id,
             metadata={
-                'offer_id': offer.id,
+                'offer_id': str(offer.id),
                 'status': offer.status,
-                'specialist': offer.proposed_specialist,
-                'daily_rate': offer.daily_rate,
+                'specialist': offer.proposed_specialist.full_name,
+                'daily_rate': str(offer.daily_rate),
             },
             request=request
         )
@@ -126,7 +127,7 @@ class ServiceOfferViewSet(
             )
 
         # Fetch offer
-        offer = get_object_or_404(Offer, id=offer_id)
+        offer = get_object_or_404(ServiceOffer, id=offer_id)
 
         if offer.status != OfferStatus.SUBMITTED:
             return Response(
