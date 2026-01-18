@@ -101,24 +101,27 @@ class ServiceRequestViewSet(
                     'word_mode': validated_data.get('word_mode'),
                 }
             )
-
+            
             # If service_request already exists, update it
             if not created:
                 service_request.title = validated_data.get('title')
-                service_request.role_name =validated_data.get('role_name'),
-                service_request.technology = validated_data.get('technology'),
-                service_request.specialization = validated_data.get('specialization'),
-                service_request.experience_level = validated_data.get('experience_level'),
-                service_request.start_date = validated_data.get('start_date'),
-                service_request.end_date = validated_data.get('end_date'),
-                service_request.expected_man_days = validated_data.get('expected_man_days'),
-                service_request.criteria_json = validated_data.get('criteria_json'),
-                service_request.task_description = validated_data.get('task_description'),
-                service_request.offer_deadline = validated_data.get('offer_deadline'),
-                service_request.word_mode = validated_data.get('word_mode'),
-
+                service_request.role_name =validated_data.get('role_name')
+                service_request.technology = validated_data.get('technology')
+                service_request.specialization = validated_data.get('specialization')
+                service_request.experience_level = validated_data.get('experience_level')
+                service_request.start_date = validated_data.get('start_date')
+                service_request.end_date = validated_data.get('end_date')
+                service_request.expected_man_days = validated_data.get('expected_man_days')
+                service_request.criteria_json = validated_data.get('criteria_json')
+                service_request.task_description = validated_data.get('task_description')
+                service_request.offer_deadline = validated_data.get('offer_deadline')
+                service_request.word_mode = validated_data.get('word_mode')
+            
             service_request.status = 'OPEN'
             service_request.save()
+
+            
+            print("request status save =====================")
 
             # Step 4: Create Flowable task
             try:
@@ -126,6 +129,9 @@ class ServiceRequestViewSet(
                 
             except Exception as e:
                 raise Exception(f"Failed to create Flowable task: {str(e)}")
+
+            
+            print("flowable exception & notification create hobe =====================")
 
             # Notification Create 
             notify_roles(
@@ -135,6 +141,8 @@ class ServiceRequestViewSet(
                 entity_type="ServiceRequest",
                 entity_id=service_request.id,
             )
+            
+            print("respoonse dibe =====================")
 
             # Step 5: Return success response
             return Response({
