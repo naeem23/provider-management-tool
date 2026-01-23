@@ -129,7 +129,7 @@ class ServiceOfferViewSet(
         # Fetch offer
         offer = get_object_or_404(ServiceOffer, id=offer_id)
 
-        if offer.status in [OfferStatus.SUBMITTED, OfferStatus.UNDER_REVIEW]:
+        if offer.status not in [OfferStatus.SUBMITTED, OfferStatus.UNDER_REVIEW]:
             return Response(
                 {"detail": "Only submitted/under review offers can be accepted/rejected."},
                 status=status.HTTP_400_BAD_REQUEST,
