@@ -120,7 +120,7 @@ class ServiceOfferViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if offer_status not in ["ACCEPTED", "REJECTED"]:
+        if offer_status not in ["UNDER_REVIEW", "ACCEPTED", "REJECTED"]:
             return Response(
                 {"detail": "Valid status are ACCEPTED/REJECTED."},
                 status=status.HTTP_400_BAD_REQUEST,

@@ -154,6 +154,7 @@ FLOWABLE_AUTH = (
 )
 
 DJANGO_BASE_URL = os.environ.get('DJANGO_BASE_URL', 'http://django:8000')
+THIRD_PARTY_API_BASE = os.getenv("THIRD_PARTY_API_BASE")
 
 
 # Add CSRF_TRUSTED_ORIGINS

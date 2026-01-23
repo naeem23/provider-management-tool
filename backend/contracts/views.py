@@ -23,10 +23,10 @@ class ContractViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
+    # mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
     queryset = Contract.objects.select_related("provider")
-    permission_classes = [IsAuthenticated, IsContractCoordinator]
 
     def get_queryset(self):
         user = self.request.user
@@ -71,12 +71,13 @@ class ContractViewSet(
         return ContractReadSerializer
 
     def get_permissions(self):
-        if self.action in ["create", "list", "update_status"]:
-            return [AllowAny(),]
-        return super().get_permissions()
+        if self.action in ["start_negotiation", "get_tasks", "accept_task", "reject_task", "counter_offer_task", "metrics", "retrieve"]:
+            return [IsAuthenticated(), IsContractCoordinator()]
+        return [AllowAny(),]
 
     def perform_create(self, serializer):
-        contract = serializer.save()
+        specialist = serializer.validated_data.get("specialist")
+        contract = serializer.save(provider=specialist.provider)
 
         # Broadcast notification
         notify_roles(
@@ -133,54 +134,21 @@ class ContractViewSet(
         )
 
 
-    @action(detail=False, methods=["post"], url_path="start-negotiation")
-    def start_negotiation(self, request):
+    @action(detail=True, methods=["post"], url_path="start-negotiation")
+    def start_negotiation(self, request, pk=None):
         """
         Start negotiation for a contract
         
         Steps:
-        1. Validate contract exists and can be negotiated
-        2. Create/Update contract in local database with status "In Negotiation"
+        1. Validate contract can be negotiated
+        2. Update contract in local database with status "In Negotiation"
         3. Update contract status in 3rd party API
         4. Create Flowable task for contract_coordinator group
         """
-    
-        # Step 1: Validate input data
-        serializer = StartNegotiationSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        validated_data = serializer.validated_data
-        external_id = validated_data.get('id')
-        provider_id = validated_data.get('provider')
-        provider = get_object_or_404(Provider, id=provider_id)
 
         try:
-            # Step 2: Get or create contract
-            contract, created = Contract.objects.get_or_create(
-                external_id=external_id,
-                defaults={
-                    'title': validated_data.get('title'),
-                    'proposed_rate': validated_data.get('proposed_rate'),
-                    'valid_from': validated_data.get('valid_from'),
-                    'valid_till': validated_data.get('valid_till'),
-                    'response_deadline': validated_data.get('response_deadline'),
-                    'terms_and_condition': validated_data.get('terms_condition', ''),
-                    'domain': validated_data.get('domain', ''),
-                    'provider': provider,
-                }
-            )
-
-            # If contract already exists, update it
-            if not created:
-                contract.title = validated_data.get('title')
-                contract.proposed_rate = validated_data.get('proposed_rate')
-                contract.valid_from = validated_data.get('valid_from')
-                contract.valid_till = validated_data.get('valid_till')
-                contract.response_deadline = validated_data.get('response_deadline')
+            # Step 1: Get contract
+            contract = self.get_object()
             
             # Validate contract can be negotiated
             if contract.status == 'IN_NEGOTIATION':
@@ -212,7 +180,7 @@ class ContractViewSet(
                 contract_data = {
                     'contract_id': str(contract.id),
                     'title': contract.title,
-                    'specialist_name': contract.specialist,
+                    'specialist_name': contract.specialist.full_name,
                     'proposed_rate': str(contract.proposed_rate),
                     'providers_expected_rate': str(contract.providers_expected_rate) if contract.providers_expected_rate else "0.00",
                     'valid_from': contract.valid_from,
@@ -285,7 +253,7 @@ class ContractViewSet(
                             'id': contract.id,
                             'external_id': contract.external_id,
                             'title': contract.title,
-                            'specialist': contract.specialist,
+                            'specialist': contract.specialist.full_name,
                             'proposed_rate': str(contract.proposed_rate),
                             'providers_expected_rate': str(contract.providers_expected_rate),
                             'valid_from': contract.valid_from,
@@ -358,7 +326,7 @@ class ContractViewSet(
                 
             # Step 3: Complete Flowable task
             try:
-                complete_contract_task(
+                complete_task(
                     task_id=task_id,
                     action='accept'
                 )
@@ -445,7 +413,7 @@ class ContractViewSet(
                         
             # Step 3: Complete Flowable task
             try:
-                complete_contract_task(
+                complete_task(
                     task_id=task_id,
                     action='reject'
                 )
@@ -670,3 +638,61 @@ class ContractVersionViewSet(viewsets.ModelViewSet):
         return ContractVersion.objects.filter(
             contract_id=self.kwargs["contract_pk"]
         ).order_by("-version_number")
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [AllowAny(),]
+        
+        return [IsAuthenticated(), IsContractCoordinator()]
+
+
+    def create(self, request, *args, **kwargs):
+        # Step 1: Validate input data
+        serializer = self.get_serializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        contract = get_object_or_404(Contract, id=self.kwargs["contract_pk"])
+
+        if contract.status in ['ACTIVE', 'REJECTED', 'EXPIRED']:
+            return Response(
+                {'error': 'Contract cannot be negotiated in current status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        latest_version = ContractVersion.objects.filter(contract=contract).order_by('-version_number').first()
+        next_version = 1 if not latest_version else latest_version.version_number + 1
+        
+        version = serializer.save(contract=contract, version_number=next_version)
+        
+        # Step 4: Create Flowable task
+        try:
+            contract_data = {
+                'contract_id': str(contract.id),
+                'title': contract.title,
+                'specialist_name': contract.specialist.full_name,
+                'proposed_rate': str(version.counter_rate),
+                'providers_expected_rate': str(latest_version.counter_rate) if latest_version else "0.00",
+                'valid_from': contract.valid_from,
+                'valid_till': contract.valid_till,
+                'response_deadline': contract.response_deadline,
+            }
+            
+            flowable_result = start_contract_negotiation(contract_data=contract_data)
+            
+            return Response({
+                'message': 'Contract version and task created successfully',
+                'contract_id': str(contract.id),
+                'version_id': str(version.id),
+                'status': contract.status
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to create Flowable task: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

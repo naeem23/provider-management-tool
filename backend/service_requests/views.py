@@ -9,10 +9,12 @@ from .serializers import ServiceRequestSerializer
 from .offer_serializers import ServiceOfferCreateSerializer
 from .permissions import IsSupplierRep
 from audit_log.models import AuditLog
+from audit_log.utils import serialize_for_json
 from integrations.flowable_client import *
 from notifications.services import notify_roles
 from providers.models import Provider
 from specialists.models import Specialist
+from integrations.third_party_service import third_party_service
 
 
 class ServiceRequestViewSet(
@@ -120,19 +122,13 @@ class ServiceRequestViewSet(
             service_request.status = 'OPEN'
             service_request.save()
 
-            
-            print("request status save =====================")
-
             # Step 4: Create Flowable task
             try:
                 flowable_result = generate_request_task(request_id=str(service_request.id))
                 
             except Exception as e:
                 raise Exception(f"Failed to create Flowable task: {str(e)}")
-
             
-            print("flowable exception & notification create hobe =====================")
-
             # Notification Create 
             notify_roles(
                 role="SUPPLIER_REP",
@@ -142,11 +138,9 @@ class ServiceRequestViewSet(
                 entity_id=service_request.id,
             )
             
-            print("respoonse dibe =====================")
-
             # Step 5: Return success response
             return Response({
-                'message': 'Contract and task created successfully',
+                'message': 'Service Request and task created successfully',
                 'contract_id': str(service_request.id),
                 'status': service_request.status
             }, status=status.HTTP_201_CREATED)
@@ -206,7 +200,7 @@ class ServiceRequestViewSet(
                     
                     tasks_with_request.append(task_data)
                     
-                except Contract.DoesNotExist:
+                except ServiceRequest.DoesNotExist:
                     continue
                         
             return Response({
@@ -292,14 +286,26 @@ class ServiceRequestViewSet(
                 notes=validated_data['notes'],
             )
 
-            # TODO: Step 3: Submit offer to third party
-            # try:
-            #     third_party_service.update_contract_status(
-            #         external_id=external_id,
-            #         status='In Negotiation'
-            #     )
-            # except Exception as e:
-            #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
+            # Step 3: Submit offer to third party
+            try:
+                third_party_api_url = f"{settings.THIRD_PARTY_API_BASE}/api/requests/service-offers/"
+                payload = {
+                    "external_id": str(offer.id),
+                    "service_request": str(service_request.external_id),
+                    "provider_id": str(provider.id),
+                    "provider_name": provider.name,
+                    "specialist_id": str(specialist.id),
+                    "specialist_name": specialist.full_name,
+                    "status": "SUBMITTED",
+                    "daily_rate": validated_data['daily_rate'],
+                    "travel_cost": validated_data['travel_cost'],
+                    "total_cost": validated_data['total_cost'],
+                    "notes": validated_data['notes']
+                }
+                print("calling 3rd party........")
+                third_party_service.call_api(url=third_party_api_url, payload=serialize_for_json(payload))
+            except Exception as e:
+                raise Exception(f"Failed to update 3rd party API: {str(e)}")
             
             # Step 5: Complete Flowable task
             try:

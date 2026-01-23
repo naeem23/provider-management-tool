@@ -6,7 +6,7 @@ from .models import Contract, ContractVersion
 class ContractReadSerializer(serializers.ModelSerializer):
     service_request_code = serializers.CharField(source="service_request.external_id", read_only=True)
     role_name = serializers.CharField(source="service_request.role_name", read_only=True)
-    specialist_name = serializers.SerializerMethodField()
+    specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
     providers_expected_rate = serializers.SerializerMethodField()
 
     class Meta:
@@ -20,6 +20,7 @@ class ContractReadSerializer(serializers.ModelSerializer):
             "role_name",
             "domain",
             "provider",
+            "specialist",
             "specialist_name",
             "proposed_rate",
             "negotiated_rate",
@@ -39,6 +40,8 @@ class ContractReadSerializer(serializers.ModelSerializer):
         ]
 
     def get_specialist_name(self, obj):
+        if obj.specialist:
+            return specialist.full_name
         if obj.winning_offer and obj.winning_offer.proposed_specialist:
             return obj.winning_offer.proposed_specialist.full_name
         return None

@@ -6,6 +6,7 @@ import string
 
 class ContractStatus(models.TextChoices):
     PENDING        = "PENDING", "Pending Approval"
+    PUBLISHED      = "PUBLISHED", "Published"
     IN_NEGOTIATION = "IN_NEGOTIATION", "In Negotiation"
     ACTIVE         = "ACTIVE", "Active"
     EXPIRED        = "EXPIRED", "Expired"
@@ -15,9 +16,10 @@ class ContractStatus(models.TextChoices):
 class Contract(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     external_id = models.CharField(max_length=255, blank=True, null=True)
-    provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="contracts")
+    provider = models.ForeignKey("providers.Provider", on_delete=models.SET_NULL, null=True, blank=True)
     service_request = models.ForeignKey("service_requests.ServiceRequest", on_delete=models.SET_NULL, null=True, blank=True)
     winning_offer = models.ForeignKey("service_requests.ServiceOffer", on_delete=models.SET_NULL, null=True, blank=True)
+    specialist = models.ForeignKey("specialists.Specialist", on_delete=models.SET_NULL, null=True, blank=True)
 
     title             = models.CharField(max_length=255)
     contract_code     = models.CharField(max_length=32, unique=True, editable=False)
@@ -59,15 +61,11 @@ class Contract(models.Model):
         return f"CNT-{random_part}"
 
     @property
-    def specialist(self):
-        if self.winning_offer and self.winning_offer.proposed_specialist:
-            return self.winning_offer.proposed_specialist.full_name
-        return None
-
-    @property
     def providers_expected_rate(self):
         if self.winning_offer:
             return self.winning_offer.daily_rate
+        if self.specialist:
+            return self.specialist.avg_daily_rate
         return None
         
 
