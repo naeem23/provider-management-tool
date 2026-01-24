@@ -40,6 +40,7 @@ class ServiceOrder(models.Model):
     
     original_man_days = models.IntegerField(validators=[MinValueValidator(1)])
     current_man_days = models.IntegerField(validators=[MinValueValidator(1)])
+    consumed_man_days = momodels.IntegerField(default=0)
     
     daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
     original_contract_value = models.DecimalField(max_digits=10, decimal_places=2)
@@ -49,6 +50,32 @@ class ServiceOrder(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.service_order_id} - {self.title}"
+    
+    @property
+    def is_active(self):
+        return self.status == 'ACTIVE'
+    
+    @property
+    def remaining_man_days(self):
+        return self.current_man_days - self.consumed_man_days
+    
+    @property
+    def has_been_extended(self):
+        return self.current_end_date > self.original_end_date
+    
+    @property
+    def has_been_substituted(self):
+        return self.current_specialist_id != self.original_specialist_id
+    
+    def can_request_extension(self):
+        # return self.status == 'ACTIVE' and self.remaining_man_days < 20
+        return self.status == 'ACTIVE'
+    
+    def can_request_substitution(self):
+        return self.status in ['ACTIVE', 'PENDING_SUBSTITUTION']
 
 
 class ChangeRequestStatus(models.TextChoices):
