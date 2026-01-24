@@ -1,81 +1,97 @@
-from rest_framework import serializers
-from .models import (
-    ServiceOrder,
-    SubstitutionRequest,
-    ExtensionRequest,
-    OrderStatus,
-)
+fromoriginal_specialist_name rest_framework import serializers
+from .models import *
 
 
-class ServiceOrderReadSerializer(serializers.ModelSerializer):
-    provider_name = serializers.CharField(source="provider.name", read_only=True)
-    specialist_name = serializers.SerializerMethodField()
-
+class ServiceOrderDetailSerializer(serializers.ModelSerializer):
+    remaining_man_days = serializers.ReadOnlyField()
+    has_been_extended = serializers.ReadOnlyField()
+    has_been_substituted = serializers.ReadOnlyField()
+    is_active = serializers.ReadOnlyField()
+    can_request_extension = serializers.SerializerMethodField()
+    can_request_substitution = serializers.SerializerMethodField()
+    # extensions_count = serializers.SerializerMethodField()
+    # substitutions_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = ServiceOrder
-        fields = [
-            "id",
-            "provider",
-            "provider_name",
-            "specialist",
-            "specialist_name",
-            "status",
-            "start_date",
-            "end_date",
-            "man_days",
-            "created_at",
-            "updated_at",
-        ]
-
-    def get_specialist_name(self, obj):
-        if obj.specialist:
-            return f"{obj.specialist.first_name} {obj.specialist.last_name}"
-        return None
+        fields = '__all__'
+    
+    def get_can_request_extension(self, obj):
+        return obj.can_request_extension()
+    
+    def get_can_request_substitution(self, obj):
+        return obj.can_request_substitution()
+    
+    # def get_extensions_count(self, obj):
+    #     return obj.extensions.count()
+    
+    # def get_substitutions_count(self, obj):
+    #     return obj.substitutions.count()
 
 
 class ServiceOrderCreateSerializer(serializers.ModelSerializer):
-    """
-    Created from accepted ServiceOffer.
-    """
-
     class Meta:
         model = ServiceOrder
         fields = [
-            "request",
-            "winning_offer",
-            "provider",
-            "specialist",
-            "start_date",
-            "end_date",
-            "man_days",
+            'title',
+            'service_request_id',
+            'winning_offer_id',
+            'contract_id',
+            'start_date',
+            # 'original_end_date',
+            'current_end_date',
+            'current_specialist_id',
+            'current_specialist_name',
+            # 'original_specialist_id',
+            # 'original_specialist_name',
+            'role',
+            'domain',
+            # 'original_man_days',
+            'current_man_days',
+            'daily_rate',
+            'original_contract_value',
+            'current_contract_value',
+            'notes',
         ]
+    
+    def validate(self, data):
+        # if data.get('current_end_date') != data.get('original_end_date'):
+        #     raise serializers.ValidationError(
+        #         "Current end date must match original end date on creation"
+        #     )
+        
+        # if data.get('current_man_days') != data.get('original_man_days'):
+        #     raise serializers.ValidationError(
+        #         "Current man days must match original man days on creation"
+        #     )
+        
+        # if data.get('current_specialist_id') != data.get('original_specialist_id'):
+        #     raise serializers.ValidationError(
+        #         "Current specialist must match original specialist on creation"
+        #     )
+        
+        # Validate dates
+        if data.get('start_date') and data.get('original_end_date'):
+            if data['start_date'] >= data['original_end_date']:
+                raise serializers.ValidationError(
+                    "Start date must be before end date"
+                )
+        
+        return data
 
 
-class SubstitutionRequestSerializer(serializers.ModelSerializer):
+class ServiceOrderUpdateSerializer(serializers.ModelSerializer):
     class Meta:
-        model = SubstitutionRequest
+        model = ServiceOrder
         fields = [
-            "id",
-            "order",
-            "current_specialist",
-            "proposed_specialist",
-            "reason",
-            "status",
-            "created_at",
+            'status',
+            'consumed_man_days',
+            'notes',
         ]
-        read_only_fields = ["status", "created_at"]
-
-
-class ExtensionRequestSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ExtensionRequest
-        fields = [
-            "id",
-            "order",
-            "new_end_date",
-            "additional_man_days",
-            "reason",
-            "status",
-            "created_at",
-        ]
-        read_only_fields = ["status", "created_at"]
+    
+    def validate_consumed_man_days(self, value):
+        if value > self.instance.current_man_days:
+            raise serializers.ValidationError(
+                f"Consumed man days cannot exceed current man days ({self.instance.current_man_days})"
+            )
+        return value

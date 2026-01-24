@@ -17,7 +17,7 @@ class ServiceOrder(models.Model):
 
     service_request_id = models.CharField(max_length=64)
     winning_offer_id = models.CharField(max_length=64)
-    contract_id = models.CharField(max_length=64)
+    contract_id = models.CharField(max_length=64, blank=True, null=True)
 
     title = models.CharField(max_length=255)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="ACTIVE")
@@ -27,9 +27,6 @@ class ServiceOrder(models.Model):
     current_end_date = models.DateField(null=True, blank=True)
     actual_end_date = models.DateField(null=True, blank=True)
 
-    supplier_id = models.CharField(max_length=64)
-    supplier_name = models.CharField(max_length=255)
-    
     current_specialist_id = models.CharField(max_length=50)
     current_specialist_name = models.CharField(max_length=255)
     original_specialist_id = models.CharField(max_length=50)
@@ -190,3 +187,30 @@ class ServiceOrderSubstitution(models.Model):
         service_order.status = 'ACTIVE'
         service_order.save()        
         self.save()
+
+
+"""
+=================================
+API ENDPOINTS NEEDED
+=================================
+
+Extension Endpoints:
+- POST /api/service-orders/{id}/extensions/ - Create extension request
+- GET /api/service-orders/{id}/extensions/ - List extensions
+- POST /api/extensions/{id}/approve-supplier/ - Supplier approves
+- POST /api/extensions/{id}/approve-client/ - Client approves (webhook from System 1)
+- POST /api/extensions/{id}/reject/ - Reject extension
+
+Substitution Endpoints:
+- POST /api/service-orders/{id}/substitutions/ - Create substitution request
+- GET /api/service-orders/{id}/substitutions/ - List substitutions
+- POST /api/substitutions/{id}/approve-supplier/ - Supplier approves
+- POST /api/substitutions/{id}/approve-client/ - Client approves (webhook from System 1)
+- POST /api/substitutions/{id}/reject/ - Reject substitution
+
+Webhook Endpoints (for System 1 to call):
+- POST /api/webhooks/extension-request/ - Receive extension from System 1
+- POST /api/webhooks/extension-decision/ - Receive client decision
+- POST /api/webhooks/substitution-request/ - Receive substitution from System 1
+- POST /api/webhooks/substitution-decision/ - Receive client decision
+"""
