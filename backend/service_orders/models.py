@@ -106,6 +106,27 @@ class ServiceOrderExtension(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def __str__(self):
+        return f"{self.extension_id} - {self.service_order.service_order_id}"
+    
+    def approve(self):
+        self.status = 'APPROVED'
+        self._apply_extension()
+        self.save()
+    
+    def reject(self, reason):
+        self.rejection_reason = reason
+        self.status = 'REJECTED'
+        self.save()
+    
+    def _apply_extension(self):
+        service_order = self.service_order
+        service_order.current_end_date = self.new_end_date
+        service_order.current_man_days += self.additional_man_days
+        service_order.current_contract_value += self.additional_cost
+        service_order.status = 'ACTIVE'
+        service_order.save()
+
 class ExtensionRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="extensions")
