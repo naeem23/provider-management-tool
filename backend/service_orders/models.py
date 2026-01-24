@@ -51,6 +51,9 @@ class ServiceOrder(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ['-created_at']
+
     def __str__(self):
         return f"{self.service_order_id} - {self.title}"
     
@@ -78,26 +81,30 @@ class ServiceOrder(models.Model):
         return self.status in ['ACTIVE', 'PENDING_SUBSTITUTION']
 
 
-class ChangeRequestStatus(models.TextChoices):
-    REQUESTED = "REQUESTED", "Requested"
-    APPROVED = "APPROVED", "Approved"
-    REJECTED = "REJECTED", "Rejected"
-    CANCELLED = "CANCELLED", "Cancelled"
-
-
-class SubstitutionRequest(models.Model):
+class ServiceOrderExtension(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING_SUPPLIER', 'Pending Supplier Approval'),
+        ('PENDING_CLIENT', 'Pending Client Approval'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="substitutions")
-
-    requested_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL)
-    status = models.CharField(max_length=16, choices=ChangeRequestStatus.choices, default=ChangeRequestStatus.REQUESTED)
-
-    current_specialist = models.ForeignKey("specialists.Specialist", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
-    proposed_specialist = models.ForeignKey("specialists.Specialist", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
-
-    reason = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
+    service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name='extensions')
+    initiated_by = models.CharField(max_length=30)    
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING_SUPPLIER')
+    additional_man_days = models.IntegerField(validators=[MinValueValidator(1)])
+    new_end_date = models.DateField()
+    additional_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    reason = models.TextField()
+    rejection_reason = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
 
 class ExtensionRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
