@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from decimal import Decimal
+from django.utils import timezone
+
 from .models import *
 
 
@@ -41,6 +43,7 @@ class ServiceOrderCreateSerializer(serializers.ModelSerializer):
             'start_date',
             # 'original_end_date',
             'current_end_date',
+            'supplier_name',
             'current_specialist_id',
             'current_specialist_name',
             # 'original_specialist_id',
@@ -50,7 +53,7 @@ class ServiceOrderCreateSerializer(serializers.ModelSerializer):
             # 'original_man_days',
             'current_man_days',
             'daily_rate',
-            'original_contract_value',
+            # 'original_contract_value',
             'current_contract_value',
             'notes',
         ]
@@ -126,7 +129,6 @@ class ExtensionCreateSerializer(serializers.ModelSerializer):
         model = ServiceOrderExtension
         fields = [
             'service_order',
-            'initiated_by',
             'additional_man_days',
             'new_end_date',
             'additional_cost',
@@ -156,13 +158,7 @@ class ExtensionCreateSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
-        if validated_data['initiated_by'] == 'PROJECT_MANAGER':
-            validated_data['status'] = 'PENDING_SUPPLIER'
-        else:
-            validated_data['status'] = 'PENDING_CLIENT'
-        
         extension = super().create(validated_data)
-        
         service_order = extension.service_order
         service_order.status = 'PENDING_EXTENSION'
         service_order.save()
@@ -219,11 +215,6 @@ class SubstitutionCreateSerializer(serializers.ModelSerializer):
         if data.get('incoming_specialist_id') == data.get('outgoing_specialist_id'):
             raise serializers.ValidationError(
                 "Incoming specialist must be different from outgoing specialist"
-            )
-        
-        if data.get('effective_date') < timezone.now().date():
-            raise serializers.ValidationError(
-                "Effective date cannot be in the past"
             )
         
         return data

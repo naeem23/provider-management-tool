@@ -27,6 +27,7 @@ class ServiceOrder(models.Model):
     current_end_date = models.DateField(null=True, blank=True)
     actual_end_date = models.DateField(null=True, blank=True)
 
+    supplier_name = models.CharField(max_length=30)
     current_specialist_id = models.CharField(max_length=50)
     current_specialist_name = models.CharField(max_length=255)
     original_specialist_id = models.CharField(max_length=50)
@@ -37,7 +38,7 @@ class ServiceOrder(models.Model):
     
     original_man_days = models.IntegerField(validators=[MinValueValidator(1)])
     current_man_days = models.IntegerField(validators=[MinValueValidator(1)])
-    consumed_man_days = momodels.IntegerField(default=0)
+    consumed_man_days = models.IntegerField(default=0)
     
     daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
     original_contract_value = models.DecimalField(max_digits=10, decimal_places=2)
@@ -96,8 +97,8 @@ class ServiceOrderExtension(models.Model):
     reason = models.TextField()
     rejection_reason = models.TextField(blank=True)
     
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['-created_at']
@@ -163,8 +164,8 @@ class ServiceOrderSubstitution(models.Model):
     reason = models.CharField(max_length=30, choices=REASON_CHOICES)
     rejection_reason = models.TextField(blank=True)
     
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ['-created_at']
@@ -187,30 +188,3 @@ class ServiceOrderSubstitution(models.Model):
         service_order.status = 'ACTIVE'
         service_order.save()        
         self.save()
-
-
-"""
-=================================
-API ENDPOINTS NEEDED
-=================================
-
-Extension Endpoints:
-- POST /api/service-orders/{id}/extensions/ - Create extension request
-- GET /api/service-orders/{id}/extensions/ - List extensions
-- POST /api/extensions/{id}/approve-supplier/ - Supplier approves
-- POST /api/extensions/{id}/approve-client/ - Client approves (webhook from System 1)
-- POST /api/extensions/{id}/reject/ - Reject extension
-
-Substitution Endpoints:
-- POST /api/service-orders/{id}/substitutions/ - Create substitution request
-- GET /api/service-orders/{id}/substitutions/ - List substitutions
-- POST /api/substitutions/{id}/approve-supplier/ - Supplier approves
-- POST /api/substitutions/{id}/approve-client/ - Client approves (webhook from System 1)
-- POST /api/substitutions/{id}/reject/ - Reject substitution
-
-Webhook Endpoints (for System 1 to call):
-- POST /api/webhooks/extension-request/ - Receive extension from System 1
-- POST /api/webhooks/extension-decision/ - Receive client decision
-- POST /api/webhooks/substitution-request/ - Receive substitution from System 1
-- POST /api/webhooks/substitution-decision/ - Receive client decision
-"""

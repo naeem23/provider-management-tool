@@ -1,6 +1,6 @@
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from django.utils import timezone
 
@@ -14,7 +14,7 @@ from audit_log.models import AuditLog
 # ====================
 class ServiceOrderViewSet(viewsets.ModelViewSet):
     queryset = ServiceOrder.objects.all()
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     # Filterable fields
     filterset_fields = [
@@ -51,6 +51,7 @@ class ServiceOrderViewSet(viewsets.ModelViewSet):
             original_specialist_id=validated_data['current_specialist_id'],
             original_specialist_name=validated_data['current_specialist_name'],
             original_man_days=validated_data['current_man_days'],
+            original_contract_value=validated_data['current_contract_value'],
         )
     
     @action(detail=True, methods=['get'])
@@ -90,7 +91,7 @@ class ServiceOrderViewSet(viewsets.ModelViewSet):
 
 class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
     queryset = ServiceOrderExtension.objects.all()
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     # Filterable fields
     filterset_fields = ['status', 'initiated_by', 'service_order']
@@ -109,6 +110,7 @@ class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
         extension = self.get_object()
         data = request.data
         user_role = data.get('user_role', None)
+        print('user role......................', user_role)
 
         if not user_role or user_role != "SUPPLIER_REP":
             return Response(
@@ -116,6 +118,7 @@ class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        print("extension status -----------------------", extension.status)
         if extension.status not in ['PENDING_SUPPLIER']:
             return Response(
                 {'error': 'Extension is not pending supplier approval'},
@@ -125,7 +128,7 @@ class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
         # Approve the extension
         extension.approve()
         
-        response_serializer = ServiceOrderExtensionDetailSerializer(extension)
+        response_serializer = ExtensionDetailSerializer(extension)
         return Response(response_serializer.data)
     
     @action(detail=True, methods=['post'])
@@ -166,7 +169,7 @@ class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
 
 class ServiceOrderSubstitutionViewSet(viewsets.ModelViewSet):
     queryset = ServiceOrderSubstitution.objects.all()
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     # Filterable fields
     filterset_fields = ['status', 'initiated_by', 'service_order', 'reason']
@@ -176,7 +179,7 @@ class ServiceOrderSubstitutionViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
     
     def get_serializer_class(self):
-        elif self.action == 'create':
+        if self.action == 'create':
             return SubstitutionCreateSerializer
         return SubstitutionDetailSerializer
 
