@@ -2,117 +2,85 @@ from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django.utils import timezone
 
-from .models import ServiceOrder, OrderStatus
-from .serializers import (
-    ServiceOrderReadSerializer,
-    ServiceOrderCreateSerializer,
-    SubstitutionRequestSerializer,
-    ExtensionRequestSerializer,
-)
-from .permissions import (
-    CanViewOrder,
-    CanManageOrder,
-    CanRequestSubstitution,
-    CanRequestExtension,
-)
+from .models import *
+from .serializers import *
 from audit_log.models import AuditLog
 
 
-class ServiceOrderViewSet(
-    mixins.ListModelMixin,
-    mixins.RetrieveModelMixin,
-    mixins.CreateModelMixin,
-    viewsets.GenericViewSet,
-):
-    queryset = ServiceOrder.objects.select_related(
-        "provider", "specialist", "winning_offer"
-    )
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-
-        if user.is_staff or user.is_superuser:
-            return self.queryset
-
-        if user.provider_id:
-            return self.queryset.filter(provider_id=user.provider_id)
-
-        return self.queryset.none()
-
+# ====================
+# SERVICE ORDER VIEWSET
+# ====================
+class ServiceOrderViewSet(viewsets.ModelViewSet):
+    queryset = ServiceOrder.objects.all()
+    # permission_classes = [IsAuthenticated]
+    
+    # Filterable fields
+    filterset_fields = [
+        'status',
+        'supplier_name',
+        'current_specialist_name',
+        'role',
+        'domain',
+    ]
+    
+    # Searchable fields
+    search_fields = [
+        'id',
+        'title',
+        'current_specialist_name',
+        'supplier_name',
+    ]
+    
+    # Ordering
+    ordering_fields = ['start_date', 'current_end_date', 'created_at']
+    ordering = ['-created_at']
+    
     def get_serializer_class(self):
-        if self.action == "create":
+        if self.action == 'create':
             return ServiceOrderCreateSerializer
-        return ServiceOrderReadSerializer
-
-    def get_permissions(self):
-        if self.action == "create":
-            return [IsAuthenticated(), CanManageOrder()]
-        return super().get_permissions()
-
-    @action(detail=True, methods=["post"])
-    def start(self, request, pk=None):
-        order = self.get_object()
-
-        if order.status != OrderStatus.CREATED:
-            return Response(
-                {"detail": "Order can only be started from CREATED state."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        order.status = OrderStatus.IN_PROGRESS
-        order.save(update_fields=["status"])
-
-        return Response({"status": "IN_PROGRESS"})
-
-    @action(detail=True, methods=["post"])
+        elif self.action in ['update', 'partial_update']:
+            return ServiceOrderUpdateSerializer
+        return ServiceOrderDetailSerializer
+    
+    def perform_create(self, serializer):
+        validated_data = serializer.validated_data
+        service_order = serializer.save(
+            original_end_date=validated_data['current_end_date'],
+            original_specialist_id=validated_data['current_specialist_id'],
+            original_specialist_name=validated_data['current_specialist_name'],
+            original_man_days=validated_data['current_man_days'],
+        )
+    
+    @action(detail=True, methods=['get'])
+    def extensions(self, request, pk=None):
+        service_order = self.get_object()
+        extensions = service_order.extensions.all()
+        serializer = ExtensionDetailSerializer(extensions, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['get'])
+    def substitutions(self, request, pk=None):
+        service_order = self.get_object()
+        substitutions = service_order.substitutions.all()
+        serializer = SubstitutionDetailSerializer(substitutions, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
-        order = self.get_object()
-
-        if order.status != OrderStatus.IN_PROGRESS:
+        service_order = self.get_object()
+        
+        if service_order.status != 'ACTIVE':
             return Response(
-                {"detail": "Only in-progress orders can be completed."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {'error': 'Only active service orders can be completed'},
+                status=status.HTTP_400_BAD_REQUEST
             )
-
-        order.status = OrderStatus.COMPLETED
-        order.save(update_fields=["status"])
-
-        return Response({"status": "COMPLETED"})
-
-
-class SubstitutionRequestViewSet(
-    mixins.CreateModelMixin,
-    mixins.ListModelMixin,
-    viewsets.GenericViewSet,
-):
-    serializer_class = SubstitutionRequestSerializer
-    permission_classes = [IsAuthenticated, CanRequestSubstitution]
-
-    def get_queryset(self):
-        return self.request.user.provider.service_orders.all()
-
-    def perform_create(self, serializer):
-        serializer.save(
-            requested_by=self.request.user,
-            status="REQUESTED",
-        )
+        
+        service_order.status = 'COMPLETED'
+        service_order.actual_end_date = timezone.now().date()
+        service_order.save()
+        serializer = self.get_serializer(service_order)
+        return Response(serializer.data)
 
 
-class ExtensionRequestViewSet(
-    mixins.CreateModelMixin,
-    mixins.ListModelMixin,
-    viewsets.GenericViewSet,
-):
-    serializer_class = ExtensionRequestSerializer
-    permission_classes = [IsAuthenticated, CanRequestExtension]
-
-    def get_queryset(self):
-        return self.request.user.provider.service_orders.all()
-
-    def perform_create(self, serializer):
-        serializer.save(
-            requested_by=self.request.user,
-            status="REQUESTED",
-        )
