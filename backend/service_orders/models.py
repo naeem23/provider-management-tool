@@ -1,28 +1,51 @@
 from django.db import models
+from django.core.validators import MinValueValidator
 import uuid
 
 
-class OrderStatus(models.TextChoices):
-    CREATED = "CREATED", "Created"
-    IN_PROGRESS = "IN_PROGRESS", "In Progress"
-    COMPLETED = "COMPLETED", "Completed"
-    CANCELLED = "CANCELLED", "Cancelled"
-
-
 class ServiceOrder(models.Model):
+    STATUS_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+        ('SUSPENDED', 'Suspended'),
+        ('PENDING_EXTENSION', 'Pending Extension'),
+        ('PENDING_SUBSTITUTION', 'Pending Substitution'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    request = models.ForeignKey("service_requests.ServiceRequest", null=True, blank=True, on_delete=models.SET_NULL)
-    winning_offer = models.ForeignKey("service_requests.ServiceOffer", null=True, blank=True, on_delete=models.SET_NULL)
+    service_request_id = models.CharField(max_length=64)
+    winning_offer_id = models.CharField(max_length=64)
+    contract_id = models.CharField(max_length=64)
 
-    provider = models.ForeignKey("providers.Provider", on_delete=models.CASCADE, related_name="service_orders")
-    specialist = models.ForeignKey("specialists.Specialist", null=True, blank=True, on_delete=models.SET_NULL)
-
-    status = models.CharField(max_length=16, choices=OrderStatus.choices, default=OrderStatus.CREATED)
+    title = models.CharField(max_length=255)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="ACTIVE")
 
     start_date = models.DateField(null=True, blank=True)
-    end_date = models.DateField(null=True, blank=True)
-    man_days = models.PositiveIntegerField(null=True, blank=True)
+    original_end_date = models.DateField(null=True, blank=True)
+    current_end_date = models.DateField(null=True, blank=True)
+    actual_end_date = models.DateField(null=True, blank=True)
+
+    supplier_id = models.CharField(max_length=64)
+    supplier_name = models.CharField(max_length=255)
+    
+    current_specialist_id = models.CharField(max_length=50)
+    current_specialist_name = models.CharField(max_length=255)
+    original_specialist_id = models.CharField(max_length=50)
+    original_specialist_name = models.CharField(max_length=255)
+    
+    role = models.CharField(max_length=100)
+    domain = models.CharField(max_length=100)
+    
+    original_man_days = models.IntegerField(validators=[MinValueValidator(1)])
+    current_man_days = models.IntegerField(validators=[MinValueValidator(1)])
+    
+    daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    original_contract_value = models.DecimalField(max_digits=10, decimal_places=2)
+    current_contract_value = models.DecimalField(max_digits=10, decimal_places=2)
+
+    notes = models.TextField(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
