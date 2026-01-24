@@ -92,7 +92,6 @@ class ServiceOrderExtension(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name='extensions')
-    initiated_by = models.CharField(max_length=30)    
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING_SUPPLIER')
     additional_man_days = models.IntegerField(validators=[MinValueValidator(1)])
     new_end_date = models.DateField()
@@ -127,15 +126,51 @@ class ServiceOrderExtension(models.Model):
         service_order.status = 'ACTIVE'
         service_order.save()
 
-class ExtensionRequest(models.Model):
+
+class ServiceOrderSubstitution(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING_SUPPLIER', 'Pending Supplier Approval'),
+        ('PENDING_CLIENT', 'Pending Client Approval'),
+        ('APPROVED', 'Approved'),
+        ('REJECTED', 'Rejected'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+    
+    INITIATOR_CHOICES = [
+        ('PROJECT_MANAGER', 'Project Manager (Client)'),
+        ('SUPPLIER_REPRESENTATIVE', 'Supplier Representative'),
+    ]
+    
+    REASON_CHOICES = [
+        ('LOW_PERFORMANCE', 'Low Performance'),
+        ('JOB_CHANGE', 'Specialist Job Change'),
+        ('HEALTH_ISSUES', 'Health Issues'),
+        ('PERSONAL_REASONS', 'Personal Reasons'),
+        ('SKILL_MISMATCH', 'Skill Mismatch'),
+        ('CLIENT_REQUEST', 'Client Request'),
+        ('OTHER', 'Other'),
+    ]
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name="extensions")
-
-    requested_by = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL)
-    status = models.CharField(max_length=16, choices=ChangeRequestStatus.choices, default=ChangeRequestStatus.REQUESTED)
-
-    new_end_date = models.DateField(null=True, blank=True)
-    additional_man_days = models.PositiveIntegerField(null=True, blank=True)
-
-    reason = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    service_order = models.ForeignKey(ServiceOrder, on_delete=models.CASCADE, related_name='substitutions')
+    initiated_by = models.CharField(max_length=30, choices=INITIATOR_CHOICES)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING_SUPPLIER')
+    
+    # Current Specialist (being replaced)
+    outgoing_specialist_id = models.CharField(max_length=50)
+    outgoing_specialist_name = models.CharField(max_length=255)
+    
+    # Replacement Specialist
+    incoming_specialist_id = models.CharField(max_length=50)
+    incoming_specialist_name = models.CharField(max_length=255)
+    incoming_specialist_daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Reason for substitution
+    reason = models.CharField(max_length=30, choices=REASON_CHOICES)
+    rejection_reason = models.TextField(blank=True)
+    
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
