@@ -84,3 +84,76 @@ class ServiceOrderViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+# ====================
+# EXTENSION VIEWSET
+# ====================
+
+class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
+    queryset = ServiceOrderExtension.objects.all()
+    # permission_classes = [IsAuthenticated]
+    
+    # Filterable fields
+    filterset_fields = ['status', 'initiated_by', 'service_order']
+    
+    # Ordering
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ExtensionCreateSerializer
+        return ExtensionDetailSerializer
+    
+    @action(detail=True, methods=['post'])
+    def approve_extension(self, request, pk=None):
+        extension = self.get_object()
+        data = request.data
+
+        if data['user_role'] != "SUPPLIER_REP":
+            return Response(
+                {'error': 'Only Supplier Representative can approve extension'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if extension.status not in ['PENDING_SUPPLIER']:
+            return Response(
+                {'error': 'Extension is not pending supplier approval'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Approve the extension
+        extension.approve()
+        
+        response_serializer = ServiceOrderExtensionDetailSerializer(extension)
+        return Response(response_serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        extension = self.get_object()
+        data = request.data 
+        user_role = data.get('user_role', None)
+        reason = data.get('reason', None)
+        
+        if not user_role or user_role != "SUPPLIER_REP":
+            return Response(
+                {'error': 'Only Supplier Representative can reject extension'},
+                status=status.HTTP_400_FORBIDDEN
+            )
+
+        if not reason:
+            return Response(
+                {'error': 'Rejection reason is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if extension.status not in ['PENDING_SUPPLIER', 'PENDING_CLIENT']:
+            return Response(
+                {'error': 'Extension is not pending approval'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Reject the extension
+        extension.reject(reason=reason)
+        
+        response_serializer = ExtensionDetailSerializer(extension)
+        return Response(response_serializer.data)
