@@ -174,7 +174,7 @@ class ServiceOrderSubstitution(models.Model):
         self._apply_substitution()
         self.save()
     
-    def reject(self, rejected_by, reason):
+    def reject(self, reason):
         self.rejection_reason = reason
         self.status = 'REJECTED'
         self.save()
