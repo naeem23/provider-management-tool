@@ -1,4 +1,5 @@
-fromoriginal_specialist_name rest_framework import serializers
+from rest_framework import serializers
+from decimal import Decimal
 from .models import *
 
 
@@ -95,3 +96,75 @@ class ServiceOrderUpdateSerializer(serializers.ModelSerializer):
                 f"Consumed man days cannot exceed current man days ({self.instance.current_man_days})"
             )
         return value
+
+
+# ====================
+# EXTENSION SERIALIZERS
+# ====================
+class ExtensionDetailSerializer(serializers.ModelSerializer):
+    service_order_title = serializers.CharField(
+        source='service_order.title',
+        read_only=True
+    )
+    service_order_current_end_date = serializers.DateField(
+        source='service_order.current_end_date',
+        read_only=True
+    )
+    
+    class Meta:
+        model = ServiceOrderExtension
+        fields = '__all__'
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+        ]
+
+
+class ExtensionCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceOrderExtension
+        fields = [
+            'service_order',
+            'initiated_by',
+            'additional_man_days',
+            'new_end_date',
+            'additional_cost',
+            'reason',
+        ]
+    
+    def validate(self, data):
+        service_order = data.get('service_order')
+        
+        if service_order.status not in ['ACTIVE', 'PENDING_EXTENSION']:
+            raise serializers.ValidationError(
+                "Extension can only be requested for active service orders"
+            )
+        
+        if data.get('new_end_date') <= service_order.current_end_date:
+            raise serializers.ValidationError(
+                "New end date must be after current end date"
+            )
+        
+        expected_cost = data.get('additional_man_days') * service_order.daily_rate
+        if abs(data.get('additional_cost') - expected_cost) > Decimal('0.01'):
+            raise serializers.ValidationError(
+                f"Additional cost should be {expected_cost} "
+                f"(additional_man_days * daily_rate)"
+            )
+        
+        return data
+    
+    def create(self, validated_data):
+        if validated_data['initiated_by'] == 'PROJECT_MANAGER':
+            validated_data['status'] = 'PENDING_SUPPLIER'
+        else:
+            validated_data['status'] = 'PENDING_CLIENT'
+        
+        extension = super().create(validated_data)
+        
+        service_order = extension.service_order
+        service_order.status = 'PENDING_EXTENSION'
+        service_order.save()
+        
+        return extension
