@@ -108,8 +108,9 @@ class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
     def approve_extension(self, request, pk=None):
         extension = self.get_object()
         data = request.data
+        user_role = data.get('user_role', None)
 
-        if data['user_role'] != "SUPPLIER_REP":
+        if not user_role or user_role != "SUPPLIER_REP":
             return Response(
                 {'error': 'Only Supplier Representative can approve extension'},
                 status=status.HTTP_403_FORBIDDEN
@@ -156,4 +157,82 @@ class ServiceOrderExtensionViewSet(viewsets.ModelViewSet):
         extension.reject(reason=reason)
         
         response_serializer = ExtensionDetailSerializer(extension)
+        return Response(response_serializer.data)
+
+
+# ====================
+# SUBSTITUTION VIEWSET
+# ====================
+
+class ServiceOrderSubstitutionViewSet(viewsets.ModelViewSet):
+    queryset = ServiceOrderSubstitution.objects.all()
+    # permission_classes = [IsAuthenticated]
+    
+    # Filterable fields
+    filterset_fields = ['status', 'initiated_by', 'service_order', 'reason']
+    
+    # Ordering
+    ordering_fields = ['created_at']
+    ordering = ['-created_at']
+    
+    def get_serializer_class(self):
+        elif self.action == 'create':
+            return SubstitutionCreateSerializer
+        return SubstitutionDetailSerializer
+
+    
+    @action(detail=True, methods=['post'])
+    def approve_substitution(self, request, pk=None):
+        substitution = self.get_object()
+        data = request.data
+        user_role = data.get('user_role', None)
+        
+        if not user_role or user_role not in ["SUPPLIER_REP", "PROJECT_MANAGER"]:
+            return Response(
+                {'error': 'Only Project Manager/Supplier Representative can approve substitution'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if substitution.status not in ['PENDING_SUPPLIER', 'PENDING_CLIENT']:
+            return Response(
+                {'error': 'Substitution is not pending supplier/client approval'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Approve the substitution
+        substitution.approve()
+        
+        response_serializer = SubstitutionDetailSerializer(substitution)
+        return Response(response_serializer.data)
+
+    
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        substitution = self.get_object()
+        data = request.data
+        user_role = data.get('user_role', None)
+        reason = data.get('reason', None)
+        
+        if not user_role or user_role not in ['SUPPLIER_REP', 'PROJECT_MANAGER']:
+            return Response(
+                {'error': 'Only Project Manager/Supplier Representative can reject substitution'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not reason:
+            return Response(
+                {'error': 'Substitution reason is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if substitution.status not in ['PENDING_SUPPLIER', 'PENDING_CLIENT']:
+            return Response(
+                {'error': 'Substitution is not pending approval'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Reject the substitution
+        substitution.reject(reason=reason)
+        
+        response_serializer = SubstitutionDetailSerializer(substitution)
         return Response(response_serializer.data)
