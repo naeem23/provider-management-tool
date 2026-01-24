@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.validators import MinValueValidator
+from datetime import date
 import uuid
 
 
@@ -38,7 +39,6 @@ class ServiceOrder(models.Model):
     
     original_man_days = models.IntegerField(validators=[MinValueValidator(1)])
     current_man_days = models.IntegerField(validators=[MinValueValidator(1)])
-    consumed_man_days = models.IntegerField(default=0)
     
     daily_rate = models.DecimalField(max_digits=10, decimal_places=2)
     original_contract_value = models.DecimalField(max_digits=10, decimal_places=2)
@@ -60,8 +60,38 @@ class ServiceOrder(models.Model):
         return self.status == 'ACTIVE'
     
     @property
-    def remaining_man_days(self):
-        return self.current_man_days - self.consumed_man_days
+    def consumed_man_days(self) -> int:
+        if not self.start_date or not self.current_end_date or not self.current_man_days:
+            return 0
+
+        # If start date is in the future, nothing consumed yet
+        today = date.today()
+        if today < self.start_date:
+            return 0
+
+        # If we're past the end date, all man days are consumed
+        if today >= self.current_end_date:
+            return self.current_man_days
+
+        # Calculate the proportion of time elapsed
+        total_days = (self.current_end_date - self.start_date).days
+        
+        # Avoid division by zero
+        if total_days <= 0:
+            return 0
+
+        elapsed_days = (today - self.start_date).days
+        
+        # Calculate consumed man days proportionally
+        consumed = int((elapsed_days / total_days) * self.current_man_days)
+        
+        return consumed
+
+    @property
+    def remaining_man_days(self) -> int:
+        if not self.current_man_days:
+            return 0
+        return max(0, self.current_man_days - self.consumed_man_days)
     
     @property
     def has_been_extended(self):

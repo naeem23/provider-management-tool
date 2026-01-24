@@ -6,6 +6,7 @@ from .models import *
 
 
 class ServiceOrderDetailSerializer(serializers.ModelSerializer):
+    consumed_man_days = serializers.ReadOnlyField()
     remaining_man_days = serializers.ReadOnlyField()
     has_been_extended = serializers.ReadOnlyField()
     has_been_substituted = serializers.ReadOnlyField()
@@ -89,16 +90,8 @@ class ServiceOrderUpdateSerializer(serializers.ModelSerializer):
         model = ServiceOrder
         fields = [
             'status',
-            'consumed_man_days',
             'notes',
         ]
-    
-    def validate_consumed_man_days(self, value):
-        if value > self.instance.current_man_days:
-            raise serializers.ValidationError(
-                f"Consumed man days cannot exceed current man days ({self.instance.current_man_days})"
-            )
-        return value
 
 
 # ====================
