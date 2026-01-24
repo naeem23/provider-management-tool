@@ -55,7 +55,7 @@ class ServiceOrder(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.service_order_id} - {self.title}"
+        return f"{self.title}"
     
     @property
     def is_active(self):
@@ -104,9 +104,6 @@ class ServiceOrderExtension(models.Model):
     
     class Meta:
         ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.extension_id} - {self.service_order.service_order_id}"
     
     def approve(self):
         self.status = 'APPROVED'
@@ -174,3 +171,22 @@ class ServiceOrderSubstitution(models.Model):
     
     class Meta:
         ordering = ['-created_at']
+    
+    def approve(self):
+        self.status = 'APPROVED'
+        self._apply_substitution()
+        self.save()
+    
+    def reject(self, rejected_by, reason):
+        self.rejection_reason = reason
+        self.status = 'REJECTED'
+        self.save()
+    
+    def _apply_substitution(self):
+        service_order = self.service_order
+        service_order.current_specialist_id = self.incoming_specialist_id
+        service_order.current_specialist_name = self.incoming_specialist_name
+        service_order.daily_rate = self.incoming_specialist_daily_rate
+        service_order.status = 'ACTIVE'
+        service_order.save()        
+        self.save()
