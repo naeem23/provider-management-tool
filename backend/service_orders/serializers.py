@@ -13,8 +13,8 @@ class ServiceOrderDetailSerializer(serializers.ModelSerializer):
     is_active = serializers.ReadOnlyField()
     can_request_extension = serializers.SerializerMethodField()
     can_request_substitution = serializers.SerializerMethodField()
-    # extensions_count = serializers.SerializerMethodField()
-    # substitutions_count = serializers.SerializerMethodField()
+    pending_extension_id = serializers.SerializerMethodField()
+    pending_substitution_id = serializers.SerializerMethodField()
     
     class Meta:
         model = ServiceOrder
@@ -26,11 +26,21 @@ class ServiceOrderDetailSerializer(serializers.ModelSerializer):
     def get_can_request_substitution(self, obj):
         return obj.can_request_substitution()
     
-    # def get_extensions_count(self, obj):
-    #     return obj.extensions.count()
-    
-    # def get_substitutions_count(self, obj):
-    #     return obj.substitutions.count()
+    def get_pending_extension_id(self, obj):
+        latest_extension = obj.extensions.order_by('-created_at').first()
+        
+        if latest_extension and latest_extension.status == 'PENDING_SUPPLIER':
+            return latest_extension.id
+        
+        return None
+
+    def get_pending_substitution_id(self, obj):
+        latest_subs = obj.substitutions.order_by('-created_at').first()
+        
+        if latest_subs and latest_subs.status == 'PENDING_SUPPLIER':
+            return latest_subs.id
+        
+        return None
 
 
 class ServiceOrderCreateSerializer(serializers.ModelSerializer):

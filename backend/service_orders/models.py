@@ -142,6 +142,9 @@ class ServiceOrderExtension(models.Model):
         self.rejection_reason = reason
         self.status = 'REJECTED'
         self.save()
+        service_order = self.service_order
+        service_order.status = 'ACTIVE'
+        service_order.save()
     
     def _apply_extension(self):
         service_order = self.service_order
@@ -209,6 +212,10 @@ class ServiceOrderSubstitution(models.Model):
         self.rejection_reason = reason
         self.status = 'REJECTED'
         self.save()
+        
+        service_order = self.service_order
+        service_order.status = 'ACTIVE'
+        service_order.save()
     
     def _apply_substitution(self):
         service_order = self.service_order
