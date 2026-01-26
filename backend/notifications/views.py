@@ -1,6 +1,6 @@
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
 from .models import Notification
@@ -18,6 +18,11 @@ class NotificationViewSet(
 
     def get_queryset(self):
         return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [AllowAny(),]
+        return super().get_permissions()
 
     @action(detail=False, methods=["get"], url_path="unread-count")
     def unread_count(self, request):

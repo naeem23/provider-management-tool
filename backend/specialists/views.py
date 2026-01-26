@@ -1,5 +1,5 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
@@ -23,7 +23,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update", "destroy"]:
             return [IsAuthenticated(), IsProviderAdmin()]
-        return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get_queryset(self):
         user = self.request.user

@@ -17,25 +17,28 @@ class ThirdPartyService:
         }
 
         try:
-            # Send the POST request to the 3rd party API
-            try:
-                print('.................... try ..........................')
-                response = requests.post(url, json=payload, headers=headers)
-            except Exception as e:
-                print(str(e))
+            response = requests.post(url, json=payload, headers=headers)
             
             # If the request was successful (status code 200)
-            print('.......response........', response)
-            if response.status_code in [201, 200]:
-                print('.......response........200')
-                return True
+            if response.status_code in [200, 201]:
+                return response
             else:
-                print(f"Error: {response.status_code} - {response.text}")
-                return False
+                # Log the error
+                print(f"API Error: {response.status_code} - {response.text}")
+                # Raise exception so caller knows it failed
+                raise Exception(f"API returned status {response.status_code}: {response.text}")
+        
+        except requests.exceptions.Timeout:
+            print("Request timed out")
+            raise Exception("Third party API request timed out")
+        
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error: {e}")
+            raise Exception(f"Failed to connect to third party API: {str(e)}")
         
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            return False
+            raise Exception(f"Third party API request failed: {str(e)}")
 
 
 # Singleton instance

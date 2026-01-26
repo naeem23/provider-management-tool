@@ -302,9 +302,9 @@ class ServiceRequestViewSet(
                     "total_cost": validated_data['total_cost'],
                     "notes": validated_data['notes']
                 }
-                print("calling 3rd party........")
-                third_party_service.call_api(url=third_party_api_url, payload=serialize_for_json(payload))
+                response = third_party_service.call_api(url=third_party_api_url, payload=serialize_for_json(payload))
             except Exception as e:
+                print(f"Failed to update 3rd party API: {str(e)}")
                 raise Exception(f"Failed to update 3rd party API: {str(e)}")
             
             # Step 5: Complete Flowable task
