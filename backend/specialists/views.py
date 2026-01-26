@@ -34,7 +34,7 @@ class SpecialistViewSet(viewsets.ModelViewSet):
         
         search = self.request.query_params.get("q")
         if search:
-            queryset = queryset.filter(status="Active").filter(
+            queryset = queryset.filter(status="Active", provider=user.provider).filter(
                 Q(role_name__icontains=search) |
                 Q(experience_level__icontains=search) |
                 Q(skills__icontains=search) |

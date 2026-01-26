@@ -47,15 +47,15 @@ class UserViewSet(
         user = self.request.user
 
         # staff can see all
-        if user.is_staff or user.is_superuser:
+        if user.is_staff and user.is_superuser:
             return qs
 
         # provider isolation: see only your provider’s users
-        if user.provider_id:
+        if user.provider:
             if self.action == "list":
-                return qs.filter(provider_id=user.provider_id).exclude(username=user.username)
+                return qs.filter(provider=user.provider).exclude(username=user.username)
             else:
-                return qs.filter(provider_id=user.provider_id)
+                return qs.filter(provider=user.provider)
 
         # if user has no provider assigned, only themselves
         return qs.filter(id=user.id)

@@ -3,11 +3,11 @@ from .models import RequestStatus, ServiceOffer, OfferStatus, ServiceRequest
 
 
 class ServiceOfferReadSerializer(serializers.ModelSerializer):
-    service_request_id = serializers.UUIDField(source="request.id", read_only=True)
-    service_request_code = serializers.CharField(source="request.external_id", read_only=True)
-    role_name = serializers.CharField(source="request.role_name", read_only=True)
+    request_id = serializers.UUIDField(source="request.id", read_only=True)
+    request_title = serializers.CharField(source="request.title", read_only=True)
+    request_duration = serializers.SerializerMethodField()
+    role_name = serializers.CharField(source="proposed_specialist.role_name", read_only=True)
     provider_id = serializers.UUIDField(source="provider.id", read_only=True)
-    provider_code = serializers.CharField(source="provider.provider_code", read_only=True)
     provider_name = serializers.CharField(source="provider.name", read_only=True)
     specialist_id = serializers.UUIDField(source="proposed_specialist.id", read_only=True)
     specialist_name = serializers.SerializerMethodField()
@@ -16,11 +16,11 @@ class ServiceOfferReadSerializer(serializers.ModelSerializer):
         model = ServiceOffer
         fields = [
             "id",
-            "service_request_id",
-            "service_request_code",
+            "request_id",
+            "request_title",
+            "request_duration",
             "role_name",
             "provider_id",
-            "provider_code",
             "provider_name",
             "specialist_id",
             "specialist_name",
@@ -40,8 +40,11 @@ class ServiceOfferReadSerializer(serializers.ModelSerializer):
 
     def get_specialist_name(self, obj):
         if obj.proposed_specialist:
-            return f"{obj.proposed_specialist.first_name} {obj.proposed_specialist.last_name}"
+            return obj.proposed_specialist.full_name
         return None
+
+    def get_request_duration(self, obj):
+        return f"{obj.request.start_date} to {obj.request.end_date}"
 
 
 class ServiceOfferCreateSerializer(serializers.ModelSerializer):

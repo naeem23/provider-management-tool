@@ -1,4 +1,6 @@
+import json
 from django.db.models import Count
+from django.conf import settings
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -45,7 +47,7 @@ class ServiceRequestViewSet(
         return qs
 
     def get_permissions(self):
-        if self.action == "generate":
+        if self.action in ["generate", "close_offers"]:
             return [AllowAny(),]
         elif self.action in ["create", "update", "partial_update"]:
             return [IsAuthenticated(), IsSupplierRep()]
@@ -69,10 +71,7 @@ class ServiceRequestViewSet(
         # Step 1: Validate input data
         serializer = ServiceRequestSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         validated_data = serializer.validated_data
         external_id = validated_data.get('external_id')
@@ -124,7 +123,10 @@ class ServiceRequestViewSet(
 
             # Step 4: Create Flowable task
             try:
-                flowable_result = generate_request_task(request_id=str(service_request.id))
+                flowable_result = generate_request_task(
+                    request_id=str(service_request.id),
+                    offer_deadline=service_request.offer_deadline
+                )
                 
             except Exception as e:
                 raise Exception(f"Failed to create Flowable task: {str(e)}")
@@ -141,7 +143,7 @@ class ServiceRequestViewSet(
             # Step 5: Return success response
             return Response({
                 'message': 'Service Request and task created successfully',
-                'contract_id': str(service_request.id),
+                'request_id': str(service_request.id),
                 'status': service_request.status
             }, status=status.HTTP_201_CREATED)
 
@@ -175,11 +177,15 @@ class ServiceRequestViewSet(
                 try:
                     # Get contract from database
                     service_request = ServiceRequest.objects.get(id=request_id)
-                    
+                    submitted_offers_str = task['variables'].get('submitted_offers')
+                    submitted_offers = json.loads(submitted_offers_str)
+                    provider_ids = [offer["provider_id"] for offer in submitted_offers]
+
                     task_data = {
                         'task_id': task['task_id'],
                         'task_name': task['task_name'],
                         'created_time': task['created_time'],
+                        'provider_ids': provider_ids,
                         'service_request': {
                             'id': service_request.id,
                             'external_id': service_request.external_id,
@@ -251,31 +257,43 @@ class ServiceRequestViewSet(
         provider = validated_data.get('provider')
         specialist = validated_data.get('proposed_specialist')
         
+        if not service_request:
+            return Response(
+                {'error': 'Service request id is missing'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not provider:
+            return Response(
+                {'error': 'Provider id is missing'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not specialist:
+            return Response(
+                {'error': 'Specialist id is missing'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if service_request.status != "OPEN":
+            return Response(
+                {'error': 'Service offer is possible only for open service request'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if this supplier already submitted an offer
+        existing_offer = ServiceOffer.objects.filter(
+            request=service_request,
+            provider=provider
+        ).first()
+
+        if existing_offer:
+            return Response(
+                {'error': 'You have already submitted an offer for this request'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         try:
-            if not service_request:
-                return Response(
-                    {'error': 'Service request id is missing'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            if not provider:
-                return Response(
-                    {'error': 'Provider id is missing'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            if not specialist:
-                return Response(
-                    {'error': 'Specialist id is missing'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            if service_request.status != "OPEN":
-                return Response(
-                    {'error': 'Service offer is possible only for open service request'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
             offer = ServiceOffer.objects.create(
                 request=service_request,
                 provider=provider,
@@ -307,14 +325,19 @@ class ServiceRequestViewSet(
                 print(f"Failed to update 3rd party API: {str(e)}")
                 raise Exception(f"Failed to update 3rd party API: {str(e)}")
             
-            # Step 5: Complete Flowable task
+            # Step 4: Record the submission in Flowable (but don't complete the task)
             try:
-                complete_task(
+                # complete_task(
+                #     task_id=task_id,
+                #     action='submit_offer',
+                #     variables={
+                #         'offer_id': str(offer.id),
+                #     }
+                # )
+                record_offer_submission(
                     task_id=task_id,
-                    action='submit_offer',
-                    variables={
-                        'offer_id': str(offer.id),
-                    }
+                    offer_id=str(offer.id),
+                    provider_id=str(provider.id)
                 )
             except Exception as e:
                 raise Exception(f"Failed to complete task: {str(e)}")
@@ -347,5 +370,68 @@ class ServiceRequestViewSet(
         except Exception as e:
             return Response(
                 {'error': f'Failed to submit counter offer: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    @action(detail=True, methods=['post'], url_path='close-offers')
+    def close_offers(self, request, pk=None):
+        """
+        Manually close the offer collection period before deadline
+        """
+        service_request = self.get_object()
+        
+        try:
+            # Find active tasks for this service request
+            tasks_url = f"{settings.FLOWABLE_BASE_URL}/runtime/tasks"
+            params = {
+                'processInstanceBusinessKey': str(service_request.id),
+                'taskDefinitionKey': 'reviewServiceRequestTask'
+            }
+            
+            response = requests.get(
+                tasks_url,
+                params=params,
+                auth=settings.FLOWABLE_AUTH,
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            tasks = response.json().get('data', [])
+            
+            if not tasks:
+                return Response(
+                    {'error': 'No active task found for this request'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Complete the task (this will end the process)
+            task_id = tasks[0]['id']
+            complete_url = f"{settings.FLOWABLE_BASE_URL}/runtime/tasks/{task_id}"
+            
+            payload = {
+                "action": "complete"
+            }
+            
+            response = requests.post(
+                complete_url,
+                json=payload,
+                auth=settings.FLOWABLE_AUTH,
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            # Update service request status
+            service_request.status = 'CLOSED'
+            service_request.save()
+            
+            return Response({
+                'message': 'Offer collection closed successfully',
+                'total_offers': service_request.offers.count()
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to close offers: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

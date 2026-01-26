@@ -56,7 +56,7 @@ class ProviderAdminRegistrationSerializer(serializers.Serializer):
             password=validated_data["password"],
             role=UserRole.PROVIDER_ADMIN,
             provider=provider,
-            is_superuser=True,
+            is_staff=True,
             is_active=True,
         )
 

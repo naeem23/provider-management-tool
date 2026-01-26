@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.flowable.org/processdef">
+
+    <process id="serviceRequestProcess" name="Service Request Process" isExecutable="true">
+
+        <startEvent id="startEvent" name="Generate Service Request"/>
+
+        <sequenceFlow sourceRef="startEvent" targetRef="reviewServiceRequestTask"/>
+
+        <!-- Simple User Task - stays active until timer fires -->
+        <userTask id="reviewServiceRequestTask" name="Review Service Request" flowable:candidateGroups="supplier_rep">
+            <documentation>
+                Review service request and submit offer
+            </documentation>
+        </userTask>
+
+        <!-- Timer boundary event: Auto-complete after deadline -->
+        <boundaryEvent id="offerDeadlineTimer" attachedToRef="reviewServiceRequestTask" cancelActivity="true">
+            <timerEventDefinition>
+                <timeDate>${offer_deadline}</timeDate>
+            </timerEventDefinition>
+        </boundaryEvent>
+
+        <sequenceFlow sourceRef="offerDeadlineTimer" targetRef="offerSubmittedEnd"/>
+
+        <!-- Manual completion path (optional) -->
+        <sequenceFlow sourceRef="reviewServiceRequestTask" targetRef="offerSubmittedEnd"/>
+
+        <!-- End Event -->
+        <endEvent id="offerSubmittedEnd" name="Offers Collection Ended"/>
+
+    </process>
+
+</definitions>

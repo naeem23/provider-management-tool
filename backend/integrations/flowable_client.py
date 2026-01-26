@@ -1,36 +1,63 @@
 import requests
 from django.conf import settings
+from datetime import datetime, time
+from django.utils import timezone
 
 
-def generate_request_task(*, request_id):
+def generate_request_task(*, request_id, offer_deadline):
     url = f"{settings.FLOWABLE_BASE_URL}/runtime/process-instances"
 
+    variables = [
+        {"name": "request_id", "value": request_id, "type": "string"},
+        {"name": "baseApiUrl", "value": settings.DJANGO_BASE_URL, "type": "string"},
+    ]
+
+    if offer_deadline:
+        if isinstance(offer_deadline, datetime):
+            deadline_datetime = offer_deadline
+        else:
+            deadline_datetime = datetime.combine(
+                offer_deadline, 
+                time(23, 59, 59)
+            )
+        
+        if timezone.is_naive(deadline_datetime):
+            deadline_datetime = timezone.make_aware(deadline_datetime)
+        
+        deadline_iso = deadline_datetime.isoformat()
+        
+        variables.append({
+            "name": "offer_deadline",
+            "value": deadline_iso,
+            "type": "date"
+        })
+    
     payload = {
         "processDefinitionKey": "serviceRequestProcess",
-        "variables": [
-            {
-                "name": "request_id",
-                "value": request_id,
-                "type": "string",
-            },
-            {
-                "name": "baseApiUrl",
-                "value": settings.DJANGO_BASE_URL,
-                "type": "string",
-            },
-        ],
+        "businessKey": request_id,
+        "variables": variables
     }
 
-    response = requests.post(
-        url,
-        auth=settings.FLOWABLE_AUTH,
-        json=payload,
-        timeout=10,
-    )
+    print("payload ===============", payload)
 
-    response.raise_for_status()
-    result = response.json()
-    return response.json()
+    try:
+        response = requests.post(
+            url,
+            auth=settings.FLOWABLE_AUTH,
+            json=payload,
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        error_msg = response.text
+        try:
+            error_detail = response.json()
+            error_msg = error_detail.get('message', error_msg)
+        except:
+            pass
+        
+        raise Exception(f"Flowable returned {response.status_code}: {error_msg}")
 
 
 def start_contract_negotiation(*, contract_data):
@@ -211,3 +238,72 @@ def complete_task(*, task_id, action, variables = None):
         
     except requests.exceptions.RequestException as e:
         raise Exception(f"Flowable task completion failed: {str(e)}")
+
+
+def record_offer_submission(*, task_id, offer_id, provider_id):
+    """
+    Record that a provider submitted an offer by updating process variables.
+    This doesn't complete the task - just tracks submissions.
+    """
+    try:
+        # Get the process instance ID from the task
+        task_url = f"{settings.FLOWABLE_BASE_URL}/runtime/tasks/{task_id}"
+        response = requests.get(task_url, auth=settings.FLOWABLE_AUTH, timeout=10)
+        response.raise_for_status()
+        
+        task_data = response.json()
+        process_instance_id = task_data.get('processInstanceId')
+        
+        if not process_instance_id:
+            return False
+        
+        # Get existing submissions
+        variables_url = f"{settings.FLOWABLE_BASE_URL}/runtime/process-instances/{process_instance_id}/variables"
+        
+        try:
+            var_response = requests.get(
+                f"{variables_url}/submitted_offers",
+                auth=settings.FLOWABLE_AUTH,
+                timeout=10
+            )
+            if var_response.status_code == 200:
+                submitted_offers = var_response.json().get('value', '[]')
+                # Parse JSON string if needed
+                if isinstance(submitted_offers, str):
+                    import json
+                    submitted_offers = json.loads(submitted_offers)
+            else:
+                submitted_offers = []
+        except:
+            submitted_offers = []
+        
+        # Add new submission
+        submitted_offers.append({
+            'offer_id': offer_id,
+            'provider_id': provider_id,
+            'submitted_at': datetime.now().isoformat()
+        })
+        
+        # Update process variable
+        import json
+        payload = [
+            {
+                "name": "submitted_offers",
+                "value": json.dumps(submitted_offers),
+                "type": "string"
+            }
+        ]
+        
+        response = requests.put(
+            variables_url,
+            json=payload,
+            auth=settings.FLOWABLE_AUTH,
+            timeout=10
+        )
+        response.raise_for_status()
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error recording offer in Flowable: {str(e)}")
+        return False
