@@ -27,12 +27,10 @@ class SpecialistViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-
         queryset = self.queryset
 
-        if user.is_staff or user.is_superuser:
+        if user.is_authenticated and (user.is_staff or user.is_superuser):
             return queryset.order_by("-created_at")
-
         
         search = self.request.query_params.get("q")
         if search:
@@ -45,8 +43,11 @@ class SpecialistViewSet(viewsets.ModelViewSet):
                 Q(certifications__icontains=search)
             )
             return queryset.order_by("-created_at")
+        
+        if user.is_authenticated and hasattr(user, 'provider'):
+            return queryset.filter(provider=user.provider).order_by("-created_at")
 
-        return queryset.filter(provider=user.provider).order_by("-created_at")
+        return queryset.order_by("-created_at")
 
     def perform_create(self, serializer):
         # Auto-assign provider based on logged-in user
