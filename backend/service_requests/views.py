@@ -178,8 +178,10 @@ class ServiceRequestViewSet(
                     # Get contract from database
                     service_request = ServiceRequest.objects.get(id=request_id)
                     submitted_offers_str = task['variables'].get('submitted_offers')
-                    submitted_offers = json.loads(submitted_offers_str)
-                    provider_ids = [offer["provider_id"] for offer in submitted_offers]
+                    provider_ids = []
+                    if submitted_offers_str:
+                        submitted_offers = json.loads(submitted_offers_str)
+                        provider_ids = [offer["provider_id"] for offer in submitted_offers]
 
                     task_data = {
                         'task_id': task['task_id'],
