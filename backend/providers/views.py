@@ -22,7 +22,7 @@ class ProviderViewSet(viewsets.ModelViewSet):
     serializer_class = ProviderSerializer
 
     def get_permissions(self):
-        if self.action in ["create", "create_provider_admin"]:
+        if self.action in ["create", "create_provider_admin", "specialists"]:
             return [AllowAny()]
 
         if self.action in ["update", "partial_update", "destroy", "metrics"]:

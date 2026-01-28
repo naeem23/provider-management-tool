@@ -2,6 +2,7 @@ import requests
 from django.conf import settings
 from datetime import datetime, time
 from django.utils import timezone
+import json
 
 
 def generate_request_task(*, request_id, offer_deadline):
@@ -37,9 +38,7 @@ def generate_request_task(*, request_id, offer_deadline):
         "businessKey": request_id,
         "variables": variables
     }
-
-    print("payload ===============", payload)
-
+    
     try:
         response = requests.post(
             url,
@@ -270,7 +269,6 @@ def record_offer_submission(*, task_id, offer_id, provider_id):
                 submitted_offers = var_response.json().get('value', '[]')
                 # Parse JSON string if needed
                 if isinstance(submitted_offers, str):
-                    import json
                     submitted_offers = json.loads(submitted_offers)
             else:
                 submitted_offers = []
@@ -285,7 +283,6 @@ def record_offer_submission(*, task_id, offer_id, provider_id):
         })
         
         # Update process variable
-        import json
         payload = [
             {
                 "name": "submitted_offers",

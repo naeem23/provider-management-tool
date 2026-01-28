@@ -268,7 +268,7 @@ class ContractViewSet(
                     tasks_with_contracts.append(task_data)
                     
                 except Contract.DoesNotExist:
-                    continue
+                    return Response({'error': 'Contract not found'}, status=status.HTTP_404_NOT_FOUND)
                         
             return Response({
                 'count': len(tasks_with_contracts),

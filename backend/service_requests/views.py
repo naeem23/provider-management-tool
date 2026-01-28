@@ -207,7 +207,10 @@ class ServiceRequestViewSet(
                     tasks_with_request.append(task_data)
                     
                 except ServiceRequest.DoesNotExist:
-                    continue
+                    return Response(
+                        {'error': 'Contract not found'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
                         
             return Response({
                 'count': len(tasks_with_request),
