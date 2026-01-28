@@ -81,16 +81,29 @@ def start_contract_negotiation(*, contract_data):
         ]
     }
 
-    response = requests.post(
-        url,
-        auth=settings.FLOWABLE_AUTH,
-        json=payload,
-        timeout=10,
-    )
+    print('...................... in side start contract .................')
 
-    response.raise_for_status()
-    result = response.json()
-    return response.json()
+    try:
+        response = requests.post(
+            url,
+            auth=settings.FLOWABLE_AUTH,
+            json=payload,
+            timeout=10,
+        )
+        print('...................... in side try contract .................')
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        error_msg = response.text
+        print('...................... inside exception contract .................')
+        print('==============', e)
+        print('................', error_msg)
+        try:
+            error_detail = response.json()
+            error_msg = error_detail.get('message', error_msg)
+        except:
+            pass
+        raise Exception(f"Flowable returned {response.status_code}: {error_msg}")
 
 
 def get_tasks_by_group(*, group_id):

@@ -30,14 +30,8 @@ class ContractViewSet(
 
     def get_queryset(self):
         user = self.request.user
-        excluded_statuses = [
-            "IN_NEGOTIATION",
-            "ACTIVE",
-            "REJECTED",
-            "EXPIRED",
-        ]
         queryset = self.queryset
-
+        
         # ---- role-based filtering ----
         if not (user.is_staff or user.is_superuser or getattr(self.request, "is_flowable", False)):
             if user.provider_id:
@@ -54,14 +48,10 @@ class ContractViewSet(
         elif search == "expiring":
             today = timezone.now()
             soon = today + timedelta(days=30)
-
-            queryset = queryset.filter(
-                status="ACTIVE",
-                valid_till__range=(today, soon)
-            )
+            queryset = queryset.filter(status="ACTIVE", valid_till__range=(today, soon))
 
         elif search == "published-only":
-            queryset = queryset.exclude(status__in=excluded_statuses, external_id="")
+            queryset = queryset.filter(Q(status='PUBLISHED') & (Q(external_id="") | Q(external_id__isnull=True)))
 
         return queryset.order_by("-created_at")
 
@@ -163,9 +153,6 @@ class ContractViewSet(
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            contract.status = 'IN_NEGOTIATION'
-            contract.save()
-
             # TODO: Step 3: Update 3rd party API
             # try:
             #     third_party_service.update_contract_status(
@@ -176,22 +163,27 @@ class ContractViewSet(
             #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
 
             # Step 4: Create Flowable task
+            contract_data = {
+                'contract_id': str(contract.id),
+                'title': contract.title,
+                'specialist_name': contract.specialist.full_name,
+                'proposed_rate': str(contract.proposed_rate),
+                'providers_expected_rate': str(contract.providers_expected_rate) if contract.providers_expected_rate else "0.00",
+                'valid_from': contract.valid_from,
+                'valid_till': contract.valid_till,
+                'response_deadline': contract.response_deadline,
+            }
+            print('.......................... i am here......................')
+                
             try:
-                contract_data = {
-                    'contract_id': str(contract.id),
-                    'title': contract.title,
-                    'specialist_name': contract.specialist.full_name,
-                    'proposed_rate': str(contract.proposed_rate),
-                    'providers_expected_rate': str(contract.providers_expected_rate) if contract.providers_expected_rate else "0.00",
-                    'valid_from': contract.valid_from,
-                    'valid_till': contract.valid_till,
-                    'response_deadline': contract.response_deadline,
-                }
-                
-                flowable_result = start_contract_negotiation(contract_data=contract_data)
-                
+                start_contract_negotiation(contract_data=contract_data)
             except Exception as e:
                 raise Exception(f"Failed to create Flowable task: {str(e)}")
+                
+            print('.......................... i am here 2......................')
+
+            contract.status = 'IN_NEGOTIATION'
+            contract.save()
 
             AuditLog.log_action(
                 user=request.user,
@@ -244,7 +236,11 @@ class ContractViewSet(
                 try:
                     # Get contract from database
                     contract = Contract.objects.get(id=contract_id)
-                    
+                    latest_versions = contract.versions.order_by('-version_number').first()
+                    proposed_rate = str(contract.proposed_rate)
+                    if latest_versions:
+                        proposed_rate = str(latest_versions.counter_rate)
+
                     task_data = {
                         'task_id': task['task_id'],
                         'task_name': task['task_name'],
@@ -254,7 +250,7 @@ class ContractViewSet(
                             'external_id': contract.external_id,
                             'title': contract.title,
                             'specialist': contract.specialist.full_name,
-                            'proposed_rate': str(contract.proposed_rate),
+                            'proposed_rate': proposed_rate,
                             'providers_expected_rate': str(contract.providers_expected_rate),
                             'valid_from': contract.valid_from,
                             'valid_till': contract.valid_till,
@@ -320,9 +316,6 @@ class ContractViewSet(
                     {'error': 'Contract not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
-            
-            contract.status = 'ACTIVE'
-            contract.save()
                 
             # Step 3: Complete Flowable task
             try:
@@ -341,6 +334,15 @@ class ContractViewSet(
             #     )
             # except Exception as e:
             #     raise Exception(f"Failed to update 3rd party API: {str(e)}")
+
+            latest_versions = contract.versions.order_by('-version_number').first()
+            proposed_rate = contract.proposed_rate
+            if latest_versions:
+                proposed_rate = latest_versions.counter_rate
+
+            contract.status = 'ACTIVE'
+            contract.negotiated_rate = proposed_rate
+            contract.save()
 
             AuditLog.log_action(
                 user=request.user,
@@ -602,28 +604,28 @@ class ContractViewSet(
         user = request.user
         
         # Define "expiring soon" threshold (e.g., 30 days)
-        expiring_threshold = timezone.now() + timedelta(days=30)
+        today = timezone.now()
+        soon = today + timedelta(days=30)
 
         # Filter contracts that are pending, active, in negotiation, OR expiring soon
         contract_counts = self.get_queryset().aggregate(
             in_negotiation=Count('id', filter=Q(status='IN_NEGOTIATION')),
-            pending_contracts=Count('id', filter=Q(status='PENDING')),
+            rejected_contracts=Count('id', filter=Q(status='REJECTED')),
             active_contracts=Count('id', filter=Q(status='ACTIVE')),
             expiring_contracts=Count(
                 'id', 
                 filter=Q(
                     status='ACTIVE',
-                    valid_till__lte=expiring_threshold,
-                    valid_till__gte=timezone.now()
+                    valid_till__range=(today, soon),
                 )
             )
         )
         
         metrics_data = {
             "in_negotiation": contract_counts.get('in_negotiation', 0),
-            "pending_contracts": contract_counts.get('pending_contracts', 0),
+            "rejected_contracts": contract_counts.get('rejected_contracts', 0),
             "active_contracts": contract_counts.get('active_contracts', 0),
-            "expiring_contracts": contract_counts.get('active_contracts', 0),
+            "expiring_contracts": contract_counts.get('expiring_contracts', 0),
         }
         
         return Response(metrics_data, status=status.HTTP_200_OK)
@@ -632,7 +634,7 @@ class ContractViewSet(
 class ContractVersionViewSet(viewsets.ModelViewSet):
     queryset = ContractVersion.objects.select_related("contract")
     serializer_class = ContractVersionSerializer
-    permission_classes = [IsAuthenticated, IsContractCoordinator]
+    permission_classes = [IsAuthenticated,]
 
     def get_queryset(self):
         return ContractVersion.objects.filter(
@@ -643,7 +645,7 @@ class ContractVersionViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return [AllowAny(),]
         
-        return [IsAuthenticated(), IsContractCoordinator()]
+        return [IsAuthenticated(),]
 
 
     def create(self, request, *args, **kwargs):

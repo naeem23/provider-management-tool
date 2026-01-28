@@ -4,10 +4,11 @@ from .models import Contract, ContractVersion
 
 
 class ContractReadSerializer(serializers.ModelSerializer):
-    service_request_code = serializers.CharField(source="service_request.external_id", read_only=True)
     role_name = serializers.CharField(source="service_request.role_name", read_only=True)
     specialist_name = serializers.CharField(source="specialist.full_name", read_only=True)
+    provider_name = serializers.CharField(source="specialist.provider.name", read_only=True)
     providers_expected_rate = serializers.SerializerMethodField()
+    proposed_rate = serializers.SerializerMethodField()
 
     class Meta:
         model = Contract
@@ -15,11 +16,11 @@ class ContractReadSerializer(serializers.ModelSerializer):
             "id",
             "contract_code",
             "service_request",
-            "service_request_code",
             "title",
             "role_name",
             "domain",
             "provider",
+            "provider_name",
             "specialist",
             "specialist_name",
             "proposed_rate",
@@ -48,6 +49,13 @@ class ContractReadSerializer(serializers.ModelSerializer):
 
     def get_providers_expected_rate(self, obj):
         return str(obj.providers_expected_rate)
+
+    def get_proposed_rate(self, obj):
+        latest_versions = obj.versions.order_by('-version_number').first()
+
+        if latest_versions:
+            return str(latest_versions.counter_rate)
+        return str(obj.proposed_rate)
 
 
 class ContractCreateSerializer(serializers.ModelSerializer):
